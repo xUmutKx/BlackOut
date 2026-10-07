@@ -8,9 +8,9 @@ Android's dark mode is dark grey, not black. On an OLED screen that wastes the b
 
 ## Screenshots
 
-| Home | Dark pages | Top layer | LSPosed module |
-|---|---|---|---|
-| ![Home](docs/screenshots/home.png) | ![Dark pages](docs/screenshots/dark-pages.png) | ![Top layer](docs/screenshots/top-layer.png) | ![LSPosed module](docs/screenshots/module.png) |
+| Home | An app's page | Google Play Store, blacked out |
+|---|---|---|
+| ![Home](docs/screenshots/home.png) | ![App page](docs/screenshots/app-detail.png) | ![Play Store](docs/screenshots/play-store.png) |
 
 ## Pick a way
 

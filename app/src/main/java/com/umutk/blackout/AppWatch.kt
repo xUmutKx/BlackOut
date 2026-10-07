@@ -23,7 +23,7 @@ class AppWatch : AccessibilityService() {
     private var wm: WindowManager? = null
     private lateinit var sp: SharedPreferences
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key != null && (key.startsWith("ly_") || key.startsWith("crush") || key == "pg_on")) { applyLayer(); applyRoot() }
+        if (key != null && (key.startsWith("ly_") || key.startsWith("crush") || key.startsWith("pg_") || key == "pages_apps")) { applyLayer(); applyRoot() }
     }
 
     override fun onServiceConnected() {
@@ -59,7 +59,7 @@ class AppWatch : AccessibilityService() {
     private fun applyRoot() {
         if (!::sp.isInitialized) return
         val crush = current in (sp.getStringSet("crush_apps", emptySet()) ?: emptySet())
-        val pages = sp.getBoolean("pg_on", false)
+        val pages = sp.getBoolean("pg_on", false) || current in (sp.getStringSet("pages_apps", emptySet()) ?: emptySet())
         val want = if (crush) "crush" else if (pages) "pages" else ""
         if (want == shown) return
         io.execute {

@@ -47,7 +47,7 @@ private val Scheme = darkColorScheme(
     surfaceContainer = Color(0xFF0E0E10), surfaceContainerHigh = Color(0xFF16161A), onSurface = Color(0xFFECECF1), onSurfaceVariant = Color(0xFF9A9AA6),
 )
 
-class AppRow(val pkg: String, val label: String, val sourceDir: String)
+class AppRow(val pkg: String, val label: String, val sourceDir: String, val launch: Boolean = true)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +56,8 @@ class MainActivity : ComponentActivity() {
         setContent { MaterialTheme(colorScheme = Scheme) { Surface(Modifier.fillMaxSize(), color = Color.Black) { Root() } } }
     }
 }
+
+private fun samsungApp(pkg: String) = pkg.startsWith("com.samsung.") || pkg.startsWith("com.sec.android") || pkg.startsWith("com.sec.")
 
 private fun googleApp(pkg: String) = pkg.startsWith("com.google.") || pkg == "com.android.vending" || pkg == "com.android.chrome" || pkg.startsWith("com.android.vending")
 
@@ -68,7 +70,7 @@ private fun Root() {
     val scope = rememberCoroutineScope()
     val prefs = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
     var mode by remember { mutableStateOf(Privilege.mode) }
-    var showAll by remember { mutableStateOf(false) }
+    var group by remember { mutableStateOf("all") }   // all / google / samsung
     var query by remember { mutableStateOf("") }
     var limit by remember { mutableFloatStateOf(prefs.getFloat("limit", 56f)) }   // brightest grey that still counts as a dark surface
     var keep by remember { mutableFloatStateOf(prefs.getFloat("keep", 0f)) }      // % of the original brightness that stays (0 = pure black)
@@ -82,7 +84,7 @@ private fun Root() {
         apps =withContext(Dispatchers.IO) {
             val pm = ctx.packageManager
             pm.getInstalledApplications(0)
-                .map { AppRow(it.packageName, pm.getApplicationLabel(it).toString(), it.sourceDir) }.sortedBy { it.label.lowercase() }
+                .map { AppRow(it.packageName, pm.getApplicationLabel(it).toString(), it.sourceDir, pm.getLaunchIntentForPackage(it.packageName) != null) }.sortedBy { it.label.lowercase() }
         }
     }
     var page by rememberSaveable { mutableStateOf("home") }   // home, global, apps, settings
@@ -101,8 +103,12 @@ private fun Root() {
         return
     }
 
-    val shown = remember(apps, showAll, query) {
-        apps.filter { (showAll || googleApp(it.pkg)) && (query.isBlank() || it.label.contains(query, true) || it.pkg.contains(query, true)) }
+    // every app you can open, plus the Google and Samsung system ones; Google first, then Samsung, then the rest
+    val shown = remember(apps, group, query) {
+        apps.filter { (it.launch || googleApp(it.pkg) || samsungApp(it.pkg)) &&
+            (group == "all" || (group == "google" && googleApp(it.pkg)) || (group == "samsung" && samsungApp(it.pkg))) &&
+            (query.isBlank() || it.label.contains(query, true) || it.pkg.contains(query, true)) }
+            .sortedWith(compareBy<AppRow>({ if (googleApp(it.pkg)) 0 else if (samsungApp(it.pkg)) 1 else 2 }, { it.label.lowercase() }))
     }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -128,9 +134,8 @@ private fun Root() {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item {
                         OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Search apps") }, leadingIcon = { Icon(Icons.Filled.Search, null) }, shape = RoundedCornerShape(26.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                            Text("Show every app, not only Google's", Modifier.weight(1f), fontSize = 13.sp, color = dim)
-                            Switch(showAll, { showAll = it })
+                        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("all" to "All apps", "google" to "Google", "samsung" to "Samsung").forEach { (k, n) -> FilterChip(group == k, { group = k }, { Text(n) }) }
                         }
                     }
                     items(shown, key = { it.pkg }) { app ->
@@ -206,7 +211,10 @@ private fun Root() {
                 SetRow(Icons.Filled.Extension, "LSPosed module", "Pure black in the apps you pick.", big = true, badge = if (Status.isActive()) "ON" else null) { page = "module" }
                 SetRow(Icons.Filled.AutoAwesome, "Material You apps", "Blacken Android's dark palette. Needs root.", big = true) { page = "global" }
                 Text("More", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
-                SetRow(Icons.Filled.Apps, "Apps", "Choose colours app by app", big = true) { page = "apps" }
+                SetRow(Icons.Filled.Apps, "Apps", "${apps.count { it.launch }} apps · Google and Samsung first", big = true) { page = "apps" }
+                apps.firstOrNull { it.pkg == "com.samsung.android.app.notes" }?.let { n ->
+                    SetRow(Icons.Filled.EditNote, "Samsung Notes", "Black pages for PDFs and notes", big = true) { open = n }
+                }
                 SetRow(Icons.Filled.Settings, "Settings", "Root access, colours, help", big = true) { page = "settings"; cat = "" }
                 PrivacyNote()
             }
@@ -309,6 +317,7 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                 if (result != null) {
                     Text("${result.entries} colour entries (${result.references} references, ${result.nightEntries} night)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (result.namesStripped) CrushCard(app.pkg, mode)
+                    PagesAppCard(app.pkg, mode)
                     LayerAppCard(app.pkg)
                     if (active >= 0) Text(if (active > 0) "$active overlays are active now" else "No BlackOut overlay active", fontSize = 13.sp, color = if (active > 0) Accent else MaterialTheme.colorScheme.onSurfaceVariant)
                 }

@@ -185,3 +185,24 @@ fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
         PrivacyNote()
     }
 }
+
+/** In an app's page: apply Dark pages (white pages to your colour, text to white) only while this app is open. Good for Samsung Notes PDFs. */
+@Composable
+fun PagesAppCard(pkg: String, mode: Privilege.Mode) {
+    val ctx = LocalContext.current
+    val sp = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
+    var apps by remember { mutableStateOf(sp.getStringSet("pages_apps", emptySet()) ?: emptySet()) }
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(vertical = 6.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Dark pages while this app is open", fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                    Text("White pages turn black, text turns white. Set the colours in Dark pages.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(pkg in apps, { v -> apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("pages_apps", apps).apply() }, enabled = mode != Privilege.Mode.None)
+            }
+            if (mode == Privilege.Mode.None) Text("Needs root or Shizuku.", fontSize = 13.sp, color = Color(0xFFFFB74D))
+            if (pkg in apps && !AppWatch.enabled(ctx)) { Spacer(Modifier.height(6.dp)); AccessRow(mode) }
+        }
+    }
+}
