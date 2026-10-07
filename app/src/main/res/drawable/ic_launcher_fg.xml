@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- an outlined crescent moon (Material "dark mode" shape) with two small stars -->
+    <group android:scaleX="2.3" android:scaleY="2.3" android:translateX="26.4" android:translateY="26.4">
+        <path android:strokeColor="#FF8C9EFF" android:strokeWidth="1.2" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000"
+            android:pathData="M12,3c-4.97,0 -9,4.03 -9,9s4.03,9 9,9s9,-4.03 9,-9c0,-0.46 -0.04,-0.92 -0.1,-1.36c-0.98,1.37 -2.58,2.26 -4.4,2.26c-2.98,0 -5.4,-2.42 -5.4,-5.4c0,-1.81 0.89,-3.42 2.26,-4.4C12.92,3.04 12.46,3 12,3z" />
+        <path android:fillColor="#FF8C9EFF" android:pathData="M18.5,4.4a0.6,0.6 0 1 1 0,1.2a0.6,0.6 0 1 1 0,-1.2z M21,8.1a0.4,0.4 0 1 1 0,0.8a0.4,0.4 0 1 1 0,-0.8z" />
+    </group>
+</vector>

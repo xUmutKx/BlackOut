@@ -1,0 +1,17 @@
+<resources>
+    <!-- suggested scope in LSPosed: the Google apps that keep grey surfaces in their dark theme -->
+    <string-array name="xposed_scope">
+        <item>com.android.vending</item>
+        <item>com.google.android.apps.photos</item>
+        <item>com.google.android.gm</item>
+        <item>com.google.android.youtube</item>
+        <item>com.google.android.apps.messaging</item>
+        <item>com.google.android.dialer</item>
+        <item>com.google.android.contacts</item>
+        <item>com.google.android.apps.maps</item>
+        <item>com.google.android.calendar</item>
+        <item>com.google.android.keep</item>
+        <item>com.google.android.apps.docs</item>
+        <item>com.android.chrome</item>
+    </string-array>
+</resources>

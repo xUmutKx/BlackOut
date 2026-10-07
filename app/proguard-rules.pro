@@ -1,0 +1,9 @@
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keepattributes *Annotation*, InnerClasses
+-keep,includedescriptorclasses class com.claudechat.**$$serializer { *; }
+-keepclassmembers class com.claudechat.** { *** Companion; }
+-keepclasseswithmembers class com.claudechat.** { kotlinx.serialization.KSerializer serializer(...); }
+-keep class com.umutk.blackout.XposedInit { *; }
+-keep class com.umutk.blackout.Status { *; }
+-dontwarn de.robv.android.xposed.**

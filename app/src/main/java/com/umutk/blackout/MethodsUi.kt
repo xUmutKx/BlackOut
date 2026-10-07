@@ -1,0 +1,187 @@
+package com.umutk.blackout
+
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+const val PRIVACY = "No data is shared. BlackOut has no internet permission: nothing you do here ever leaves your phone."
+
+/** The privacy promise, shown on the home screen, in About and on the method pages. */
+@Composable
+fun PrivacyNote(modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFF0F1A12)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Filled.Lock, null, tint = Color(0xFF66BB6A), modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(PRIVACY, fontSize = 13.sp, color = Color(0xFFB9E4BE))
+    }
+}
+
+/** Is the accessibility service on? With buttons to switch it on (through root, or by hand in the system settings). */
+@Composable
+fun AccessRow(mode: Privilege.Mode) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf(AppWatch.enabled(ctx)) }
+    var msg by remember { mutableStateOf<String?>(null) }
+    Column {
+        Text(if (on) "Accessibility service is on" else "Accessibility service is off", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = if (on) Color(0xFF4CAF50) else Color(0xFFFFB74D))
+        Text("It only hears which app is in front. It cannot read your screen.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!on) Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button({
+                scope.launch {
+                    val o = withContext(Dispatchers.IO) { AppWatch.enableWithPower() }
+                    on = AppWatch.enabled(ctx); msg = if (on) null else "Root could not switch it on: ${o.text.take(100)}"
+                }
+            }, enabled = mode == Privilege.Mode.Root || mode == Privilege.Mode.Shizuku) { Text("Turn on (root)") }
+            OutlinedButton({ ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Text("Open settings") }
+            TextButton({ on = AppWatch.enabled(ctx) }) { Text("Refresh") }
+        }
+        msg?.let { Text(it, fontSize = 13.sp, color = Color(0xFFF44336)) }
+    }
+}
+
+private val LayerColors = listOf("Black" to 0x000000, "Navy" to 0x050A18, "Warm" to 0x140E08, "Forest" to 0x07120A, "Plum" to 0x120818)
+
+/** Top layer through accessibility: works without root. */
+@Composable
+fun LayerPage(mode: Privilege.Mode, sp: SharedPreferences) {
+    var on by remember { mutableStateOf(sp.getBoolean("ly_on", false)) }
+    var alpha by remember { mutableFloatStateOf(sp.getInt("ly_alpha", 45).toFloat()) }
+    var color by remember { mutableIntStateOf(sp.getInt("ly_color", 0x000000) and 0xFFFFFF) }
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Preview", fontWeight = FontWeight.Bold)
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.weight(1f)) { MockPage(null, Modifier.fillMaxWidth()) }
+                    Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp))) {
+                        MockPage(null, Modifier.fillMaxWidth())
+                        Box(Modifier.matchParentSize().background(Color(0xFF000000.toInt() or color).copy(alpha = alpha / 100f)))
+                    }
+                }
+            }
+        }
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(if (on) "Top layer is ON (all apps)" else "Top layer is off", fontWeight = FontWeight.Bold)
+                        Text("Dims everything. You can also set it per app.", fontSize = 13.sp, color = dim)
+                    }
+                    Switch(on, { on = it; sp.edit().putBoolean("ly_on", it).apply() })
+                }
+                Text("Darkness ${alpha.toInt()}%", fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+                Slider(alpha, { alpha = it }, valueRange = 0f..92f, onValueChangeFinished = { sp.edit().putInt("ly_alpha", alpha.toInt()).apply() })
+                Text("Colour", fontSize = 14.sp)
+                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LayerColors.forEach { (_, c) ->
+                        Box(Modifier.size(34.dp).clip(CircleShape).background(Color(0xFF000000.toInt() or c)).border(if (color == c) 3.dp else 1.dp, if (color == c) Color(0xFF8C9EFF) else Color(0x66FFFFFF), CircleShape)
+                            .clickable { color = c; sp.edit().putInt("ly_color", c).apply() })
+                    }
+                }
+            }
+        }
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.padding(16.dp)) {
+                AccessRow(mode)
+                Text("It dims evenly: greys get darker and white turns grey. For pure black use Dark pages or the module.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+        PrivacyNote()
+    }
+}
+
+/** In an app's page: show the top layer only while this app is open. */
+@Composable
+fun LayerAppCard(pkg: String) {
+    val ctx = LocalContext.current
+    val sp = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
+    var apps by remember { mutableStateOf(sp.getStringSet("ly_apps", emptySet()) ?: emptySet()) }
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(vertical = 6.dp)) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Top layer while this app is open", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text("No root needed. Set darkness and colour in Top layer.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(pkg in apps, { v -> apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("ly_apps", apps).apply() })
+        }
+    }
+}
+
+/** LSPosed module: how to switch it on, its settings and whether it is active. */
+@Composable
+fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf(sp.getBoolean("lsp_on", true)) }
+    var limit by remember { mutableFloatStateOf(sp.getFloat("limit", 56f)) }
+    var keep by remember { mutableFloatStateOf(sp.getFloat("keep", 0f)) }
+    var active by remember { mutableStateOf(Status.isActive()) }
+    var msg by remember { mutableStateOf<String?>(null) }
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(if (active) Color(0xFF4CAF50) else Color(0xFFFFB74D)))
+                    Spacer(Modifier.width(10.dp))
+                    Text(if (active) "Module is active in LSPosed" else "Module not detected yet", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    TextButton({ active = Status.isActive() }) { Text("Refresh") }
+                }
+                Text("Turns the dark greys of the apps you tick into pure black. Works even when an app hides its colour names.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
+                Text("1. In LSPosed, open Modules → BlackOut and switch it on.\n2. Tick the apps to black out, and tick BlackOut too.\n3. Close those apps and open them again.", fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button({
+                        val i = ctx.packageManager.getLaunchIntentForPackage("org.lsposed.manager")
+                        if (i != null) ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        else msg = "LSPosed is not installed, or it has no launcher icon: open it from its notification, or dial *#*#5776733#*#*."
+                    }) { Text("Open LSPosed") }
+                }
+                msg?.let { Text(it, fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 4.dp)) }
+            }
+        }
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Apply in the ticked apps", Modifier.weight(1f), fontWeight = FontWeight.Medium)
+                    Switch(on, { on = it; sp.edit().putBoolean("lsp_on", it).apply() })
+                }
+                Text("Greys up to #%02X%02X%02X count as surfaces".format(limit.toInt(), limit.toInt(), limit.toInt()), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                Slider(limit, { limit = it }, valueRange = 24f..96f, onValueChangeFinished = { sp.edit().putFloat("limit", limit).apply() })
+                Text(if (keep < 1f) "Result: pure black" else "Result: ${keep.toInt()}% of the brightness stays", fontSize = 13.sp)
+                Slider(keep, { keep = it }, valueRange = 0f..40f, onValueChangeFinished = { sp.edit().putFloat("keep", keep).apply() })
+                Text("Changes apply when an app starts. If an app ignores them:", fontSize = 13.sp, color = dim)
+                OutlinedButton({
+                    scope.launch {
+                        val o = withContext(Dispatchers.IO) { Privilege.run("chmod 755 /data/data/${ctx.packageName}; chmod 755 /data/data/${ctx.packageName}/shared_prefs; chmod 644 /data/data/${ctx.packageName}/shared_prefs/blackout.xml; echo ok") }
+                        msg = if (o.text.contains("ok")) "Settings are readable by the module now." else "Failed: ${o.text.take(100)}"
+                    }
+                }, enabled = mode != Privilege.Mode.None) { Text("Fix settings access (root)") }
+            }
+        }
+        PrivacyNote()
+    }
+}

@@ -1,0 +1,10 @@
+build/
+.gradle/
+.kotlin/
+.idea/
+local.properties
+*.apk
+*.log
+tools/simplify_ui.py
+tools/patch_*.py
+tools/newroot.kt
