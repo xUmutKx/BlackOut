@@ -125,6 +125,14 @@ private fun Root() {
                 TopBar("Dark pages") { page = "home" }
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { PageCard(mode, prefs) }
             }
+            "notes" -> {
+                TopBar("Samsung Notes") { page = "home" }
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Notes draw their pages themselves, so overlays cannot reach them. This swaps light and dark on the screen only while Samsung Notes is open: the white page becomes the colour below, black text and ink turn light, coloured ink keeps its colour. Other apps are not touched.", fontSize = 14.sp, color = dim)
+                    PagesAppCard("com.samsung.android.app.notes", mode)
+                    PageCard(mode, prefs, showMaster = false)
+                }
+            }
             "global" -> {
                 TopBar("All Material You apps") { page = "home" }
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { GlobalCard(mode, keep / 100f) }
@@ -186,7 +194,7 @@ private fun Root() {
                             SetRow(Icons.Filled.Tune, "Colours", "Grey limit ${limit.toInt()}, keep ${keep.toInt()}%") { cat = "surface" }
                             SetRow(Icons.Filled.Security, "Root access", if (mode == Privilege.Mode.None) "Not available" else "Using ${Privilege.detail}") { cat = "access" }
                             SetRow(Icons.Filled.BugReport, "Help", "See why something does not work") { cat = "diag" }
-                            SetRow(Icons.Filled.Info, "About", "BlackOut 0.6") { cat = "about" }
+                            SetRow(Icons.Filled.Info, "About", "BlackOut 0.8") { cat = "about" }
                         }
                     }
                 }
@@ -205,6 +213,7 @@ private fun Root() {
                     Spacer(Modifier.width(8.dp))
                     Text(if (mode == Privilege.Mode.None) "No root or Shizuku (tap to fix)" else "Ready · ${Privilege.detail}", fontSize = 14.sp)
                 }
+                WatcherReminder(prefs, mode)
                 Text("Pick a way", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
                 SetRow(Icons.Filled.Layers, "Top layer", "Dims the screen. No root needed.", big = true, badge = if (prefs.getBoolean("ly_on", false)) "ON" else "OFF") { page = "layer" }
                 SetRow(Icons.Filled.DarkMode, "Dark pages", "White pages turn dark. Needs root.", big = true, badge = if (prefs.getBoolean("pg_on", false)) "ON" else "OFF") { page = "pages" }
@@ -213,7 +222,7 @@ private fun Root() {
                 Text("More", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
                 SetRow(Icons.Filled.Apps, "Apps", "${apps.count { it.launch }} apps · Google and Samsung first", big = true) { page = "apps" }
                 apps.firstOrNull { it.pkg == "com.samsung.android.app.notes" }?.let { n ->
-                    SetRow(Icons.Filled.EditNote, "Samsung Notes", "Black pages for PDFs and notes", big = true) { open = n }
+                    SetRow(Icons.Filled.EditNote, "Samsung Notes", "Page background black, text and ink stay readable", big = true) { page = "notes" }
                 }
                 SetRow(Icons.Filled.Settings, "Settings", "Root access, colours, help", big = true) { page = "settings"; cat = "" }
                 PrivacyNote()
@@ -297,6 +306,7 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
     var msg by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var active by remember { mutableIntStateOf(-1) }
+    var progress by remember { mutableStateOf("") }
     val off = remember(app.pkg) { mutableStateListOf<String>() }                // names the user switched off
     LaunchedEffect(app.pkg) { if (result == null) onScan() }
     LaunchedEffect(app.pkg, mode) { if (mode != Privilege.Mode.None) active = withContext(Dispatchers.IO) { Overlays.activeCount(app.pkg) } }
@@ -310,7 +320,7 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) { Text(app.label, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1); Text(app.pkg, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); if (progress.isNotEmpty()) Text(progress, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             item {
                 if (error != null) Text("Scan failed: $error", color = Color(0xFFF44336))
@@ -323,10 +333,10 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                 }
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button({
-                        busy = true
+                        busy = true; progress = "Starting…"
                         scope.launch {
-                            val r = withContext(Dispatchers.IO) { Overlays.apply(app.pkg, chosen.map { it.name to Overlays.scaled(it.color, keep) }) }
-                            msg = r.message; busy = false
+                            val r = withContext(Dispatchers.IO) { Overlays.apply(app.pkg, chosen.map { it.name to Overlays.scaled(it.color, keep) }) { d, n -> progress = "Applying $d / $n" } }
+                            msg = r.message; busy = false; progress = ""
                             if (r.ok) { active = withContext(Dispatchers.IO) { Overlays.activeCount(app.pkg) } }
                         }
                     }, enabled = mode != Privilege.Mode.None && chosen.isNotEmpty() && !busy && result?.namesStripped != true) { Text("Apply (${chosen.size})") }
@@ -341,6 +351,7 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                 }
                 msg?.let { Text(it, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton({ off.clear(); result?.candidates?.forEach { if (KEEP.containsMatchIn(it.name)) off.add(it.name) } }) { Text("Surfaces only") }
                     TextButton({ off.clear() }) { Text("Select all") }
                     TextButton({ off.clear(); result?.candidates?.forEach { off.add(it.name) } }) { Text("Select none") }
                     TextButton(onScan) { Text("Re-scan") }

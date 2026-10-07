@@ -47,7 +47,7 @@ fun AccessRow(mode: Privilege.Mode) {
     var msg by remember { mutableStateOf<String?>(null) }
     Column {
         Text(if (on) "Accessibility service is on" else "Accessibility service is off", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = if (on) Color(0xFF4CAF50) else Color(0xFFFFB74D))
-        Text("It only hears which app is in front. It cannot read your screen.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("It sees where text and images are, never what they say. Nothing is stored or sent.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!on) Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button({
                 scope.launch {
@@ -92,6 +92,14 @@ fun LayerPage(mode: Privilege.Mode, sp: SharedPreferences) {
                         Text("Dims everything. You can also set it per app.", fontSize = 13.sp, color = dim)
                     }
                     Switch(on, { on = it; sp.edit().putBoolean("ly_on", it).apply() })
+                }
+                var protect by remember { mutableStateOf(sp.getBoolean("ly_protect", true)) }
+                Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Keep text and images bright", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text("Cuts holes in the layer over text and images. Best on dark apps; on white pages the patches around the text stay light.", fontSize = 13.sp, color = dim)
+                    }
+                    Switch(protect, { protect = it; sp.edit().putBoolean("ly_protect", it).apply() })
                 }
                 Text("Darkness ${alpha.toInt()}%", fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
                 Slider(alpha, { alpha = it }, valueRange = 0f..92f, onValueChangeFinished = { sp.edit().putInt("ly_alpha", alpha.toInt()).apply() })
@@ -192,6 +200,7 @@ fun PagesAppCard(pkg: String, mode: Privilege.Mode) {
     val ctx = LocalContext.current
     val sp = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
     var apps by remember { mutableStateOf(sp.getStringSet("pages_apps", emptySet()) ?: emptySet()) }
+    val scope = rememberCoroutineScope()
     Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(vertical = 6.dp)) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -199,10 +208,32 @@ fun PagesAppCard(pkg: String, mode: Privilege.Mode) {
                     Text("Dark pages while this app is open", fontWeight = FontWeight.Medium, fontSize = 15.sp)
                     Text("White pages turn black, text turns white. Set the colours in Dark pages.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Switch(pkg in apps, { v -> apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("pages_apps", apps).apply() }, enabled = mode != Privilege.Mode.None)
+                Switch(pkg in apps, { v ->
+                    apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("pages_apps", apps).apply()
+                    // the watcher is what notices the app opening; with root it can be switched on right here
+                    if (v && !AppWatch.enabled(ctx)) scope.launch { withContext(Dispatchers.IO) { AppWatch.enableWithPower() } }
+                }, enabled = mode != Privilege.Mode.None)
             }
             if (mode == Privilege.Mode.None) Text("Needs root or Shizuku.", fontSize = 13.sp, color = Color(0xFFFFB74D))
             if (pkg in apps && !AppWatch.enabled(ctx)) { Spacer(Modifier.height(6.dp)); AccessRow(mode) }
+        }
+    }
+}
+
+/** Per-app effects need the accessibility watcher: say so on the home screen when one is on and the watcher is off. */
+@Composable
+fun WatcherReminder(sp: SharedPreferences, mode: Privilege.Mode) {
+    val ctx = LocalContext.current
+    fun set(k: String) = !(sp.getStringSet(k, emptySet()) ?: emptySet()).isEmpty()
+    val needs = sp.getBoolean("ly_on", false) || set("ly_apps") || set("pages_apps") || set("crush_apps")
+    var on by remember { mutableStateOf(AppWatch.enabled(ctx)) }
+    LaunchedEffect(needs) { on = AppWatch.enabled(ctx) }
+    if (!needs || on) return
+    Surface(shape = RoundedCornerShape(16.dp), color = Color(0xFF2A1F0E)) {
+        Column(Modifier.padding(14.dp)) {
+            Text("The watcher is off", fontWeight = FontWeight.Bold, color = Color(0xFFFFB74D))
+            Text("You turned on effects for apps (top layer, dark pages or black level) but they only work while the accessibility watcher runs.", fontSize = 14.sp, color = Color(0xFFE0C9A0))
+            AccessRow(mode)
         }
     }
 }

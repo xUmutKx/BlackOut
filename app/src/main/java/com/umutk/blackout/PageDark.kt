@@ -2,7 +2,7 @@ package com.umutk.blackout
 
 /**
  * Dark pages: a screen-wide colour matrix (the kind Android's own colour inversion uses) that turns white pages into the chosen
- * colour and black text into white. With [Cfg.hueSafe] the hue is rotated back, so photos keep their colours (like CSS invert + hue-rotate 180).
+ * colour and black text into white. With [Cfg.hueSafe] only the lightness is turned around, so colours in photos and ink keep their hue.
  * Needs root or Shizuku: the matrix is handed to SurfaceFlinger. It lasts until reboot.
  */
 object PageDark {
@@ -12,10 +12,15 @@ object PageDark {
 
     /** Row-major 3x3 part and the offsets, normalised 0..1: out = hi + (hi - lo) * H * in. */
     private fun parts(c: Cfg): Pair<Array<FloatArray>, FloatArray> {
-        val h = if (c.hueSafe) arrayOf(floatArrayOf(.333f, -.667f, -.667f), floatArrayOf(-.667f, .333f, -.667f), floatArrayOf(-.667f, -.667f, .333f))
-        else arrayOf(floatArrayOf(-1f, 0f, 0f), floatArrayOf(0f, -1f, 0f), floatArrayOf(0f, 0f, -1f))
         val lo = floatArrayOf(ch(c.bg, 16), ch(c.bg, 8), ch(c.bg, 0))
         val hi = floatArrayOf(ch(c.text, 16), ch(c.text, 8), ch(c.text, 0))
+        if (c.hueSafe) {
+            // only the lightness is turned around: white -> page colour, black -> text, while every colour keeps its hue and saturation
+            val w = floatArrayOf(.299f, .587f, .114f)
+            val m = Array(3) { r -> FloatArray(3) { k -> (if (r == k) 1f else 0f) + w[k] * (lo[r] - hi[r] - 1f) } }
+            return m to hi
+        }
+        val h = arrayOf(floatArrayOf(-1f, 0f, 0f), floatArrayOf(0f, -1f, 0f), floatArrayOf(0f, 0f, -1f))
         val m = Array(3) { r -> FloatArray(3) { k -> (hi[r] - lo[r]) * h[r][k] } }
         return m to hi
     }
@@ -50,9 +55,9 @@ object PageDark {
         return Cfg(bg, t, sp.getBoolean("pg_hue", true))
     }
 
-    /** Raises the black level: every grey up to [level] (0..80 of 255) becomes pure black, the rest is stretched to keep white. */
+    /** Raises the black level: every tone gets [level] (0..80 of 255) darker, so the greys up to it become pure black. The slope stays 1: contrast between tones is not stretched. */
     fun applyCrush(level: Int): Privilege.Out {
-        val k = 255f / (255f - level); val off = -level / 255f * k
+        val k = 1f; val off = -level / 255f
         val m = FloatArray(16).also { it[0] = k; it[5] = k; it[10] = k; it[12] = off; it[13] = off; it[14] = off; it[15] = 1f }
         return Privilege.run("service call SurfaceFlinger 1015 i32 1 " + m.joinToString(" ") { "f " + String.format(java.util.Locale.US, "%.4f", it) })
     }

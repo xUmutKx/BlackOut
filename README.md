@@ -16,7 +16,7 @@ Android's dark mode is dark grey, not black. On an OLED screen that wastes the b
 
 | | Needs | What it does |
 |---|---|---|
-| **Top layer** | Accessibility only | A see-through dark layer over everything, or only over the apps you pick. Greys get darker, white turns grey. |
+| **Top layer** | Accessibility only | A see-through dark layer over everything, or only over the apps you pick, with holes over text and images so they stay bright. It goes away when you leave the app, also in recents. |
 | **Dark pages** | Root or Shizuku | White pages turn the colour you choose (AMOLED black by default), text turns white, photos keep their colours as far as a screen filter can. Live preview before you switch it on. |
 | **LSPosed module** | Root + LSPosed | Every dark grey an enabled app asks for becomes pure black. Works even in apps that hide their colour names. |
 | **Material You apps** | Root | Blackens the dark tones of Android's own palette, which Google apps build their surfaces from. |
@@ -36,7 +36,7 @@ Some apps strip their resource names, so overlays cannot tell their colours apar
 ## Privacy
 
 - No internet permission.
-- The accessibility service only hears which app came to the front. It cannot read your screen, keys or text.
+- The accessibility service sees where text and images are on screen (their bounds, never what they say) so the top layer can leave them bright, and which app is in front. It does not store or send anything, and the app has no internet permission.
 - The app lists your installed apps on the phone to let you pick; that list stays on the phone.
 
 ## Build

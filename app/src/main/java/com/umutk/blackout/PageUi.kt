@@ -31,7 +31,7 @@ private val PagePresets = listOf("AMOLED" to 0x000000, "Charcoal" to 0x121212, "
 
 /** Turns white pages into a colour of your choice (live preview), text white, photos hue-corrected. Runs through root / Shizuku. */
 @Composable
-fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences) {
+fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences, showMaster: Boolean = true) {
     val scope = rememberCoroutineScope()
     var r by remember { mutableFloatStateOf(prefs.getFloat("pg_r", 0f)) }
     var g by remember { mutableFloatStateOf(prefs.getFloat("pg_g", 0f)) }
@@ -84,14 +84,14 @@ fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences) {
                 Slider(txt, { txt = it }, valueRange = 140f..255f, onValueChangeFinished = { push() })
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Keep photo colours", fontSize = 14.sp)
-                        Text("Rotates the hue back so photos do not look like negatives.", fontSize = 13.sp, color = dim)
+                        Text("Keep colours", fontSize = 14.sp)
+                        Text("Only light and dark are swapped; colours in photos and ink keep their hue.", fontSize = 13.sp, color = dim)
                     }
                     Switch(hueSafe, { hueSafe = it; push(it) })
                 }
             }
         }
-        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+        if (showMaster) Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (on) "Dark pages are ON" else "Dark pages are off", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))

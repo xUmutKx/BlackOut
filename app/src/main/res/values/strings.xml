@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">BlackOut</string>
-    <string name="watch_desc">Notices which app is in front so BlackOut can deepen the dark greys of apps that overlays cannot theme. It reads no screen content.</string>
+    <string name="watch_desc">Notices which app is in front so BlackOut can deepen the dark greys of apps that overlays cannot theme. It only looks at where text and images are, so they stay bright. Nothing is stored or sent.</string>
 </resources>

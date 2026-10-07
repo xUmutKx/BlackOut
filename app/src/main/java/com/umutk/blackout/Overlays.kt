@@ -25,29 +25,41 @@ object Overlays {
 
     class Result(val ok: Boolean, val message: String)
 
-    /** Creates + enables overlays for [items] (resource name to new colour) of [pkg]. */
-    fun apply(pkg: String, items: List<Pair<String, Int>>): Result {
+    private fun one(pkg: String, res: String, color: Int): String =
+        "cmd overlay fabricate --target $pkg --name ${oname(pkg, res)} $pkg:color/$res 0x1c 0x${"%08x".format(color)}"
+
+    private fun enable(pkg: String, res: String): String {
+        val n = oname(pkg, res)
+        return "(cmd overlay enable --user 0 root:$n || cmd overlay enable --user 0 com.android.shell:$n)"
+    }
+
+    /**
+     * Creates + enables overlays for [items] (resource name to new colour) of [pkg].
+     * The first one runs alone and shows Android's own answer; if it fails the rest is not even tried (an app that does not allow overlays
+     * would otherwise fail hundreds of times). The rest goes in parallel batches so that a few hundred colours take seconds, not minutes.
+     */
+    fun apply(pkg: String, items: List<Pair<String, Int>>, onProgress: (Int, Int) -> Unit = { _, _ -> }): Result {
         if (items.isEmpty()) return Result(true, "nothing to apply")
-        val sb = StringBuilder()
-        // owner of a fabricated overlay is "root" for root, "com.android.shell" for the shell user
-        var first = true
-        for ((res, color) in items) {
-            val n = oname(pkg, res)
-            // the first one keeps its error output so a failure can be shown to the user
-            val sink = if (first) "2>&1 | head -c 300; " else ">/dev/null 2>&1; "
-            if (first) sb.append("echo \"fabricate:\"; ")
-            sb.append("cmd overlay fabricate --target $pkg --name $n $pkg:color/$res 0x1c 0x${"%08x".format(color)} $sink")
-            if (first) sb.append("echo \"enable:\"; ")
-            val en = "(cmd overlay enable --user 0 root:$n || cmd overlay enable --user 0 com.android.shell:$n)"
-            sb.append(en).append(if (first) " 2>&1 | head -c 300; " else " >/dev/null 2>&1; ")
-            first = false
+        val (r0, c0) = items[0]
+        val probe = Privilege.run("echo \"fabricate:\"; ${one(pkg, r0, c0)} 2>&1 | head -c 300; echo \"enable:\"; ${enable(pkg, r0)} 2>&1 | head -c 300; echo; echo count:; cmd overlay list --user 0 | grep '${tag(pkg)}' | grep -c '\\[x\\]'")
+        val ok0 = (probe.text.lines().lastOrNull()?.trim()?.toIntOrNull() ?: 0) > 0
+        if (!ok0) {
+            val log = probe.text.substringBefore("count:").trim()
+            val why = if (log.contains("Unable to retrieve overlay information")) "This app does not let overlays change that colour (it is not overlayable). Use Dark pages or the LSPosed module for it instead."
+                else "Android said:\n" + log.ifBlank { "(nothing: is 'cmd overlay' available on this Android version?)" }
+            return Result(false, "No overlay is enabled. $why")
         }
-        sb.append("echo; echo count:; cmd overlay list --user 0 | grep '${tag(pkg)}' | grep -c '\\[x\\]'")
-        val out = Privilege.run(sb.toString())
-        val made = out.text.lines().lastOrNull()?.trim()?.toIntOrNull() ?: 0
-        val log = out.text.substringBefore("count:").trim()
-        return if (made > 0) Result(true, "$made overlays active for $pkg. Close the app from recents and open it again.")
-        else Result(false, "No overlay is enabled. Android said:\n" + log.ifBlank { "(nothing: is 'cmd overlay' available on this Android version?)" })
+        onProgress(1, items.size)
+        var done = 1
+        for (chunk in items.drop(1).chunked(16)) {
+            val sb = StringBuilder()
+            for ((res, color) in chunk) sb.append("(${one(pkg, res, color)} && ${enable(pkg, res)}) >/dev/null 2>&1 & ")
+            sb.append("wait")
+            Privilege.run(sb.toString())
+            done += chunk.size; onProgress(done, items.size)
+        }
+        val made = activeCount(pkg)
+        return Result(true, "$made of ${items.size} overlays active for $pkg. Close the app from recents and open it again.")
     }
 
     /** Disables every BlackOut overlay of [pkg] (and tries to unregister them). */

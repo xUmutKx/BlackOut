@@ -38,7 +38,7 @@ fun CrushCard(pkg: String, mode: Privilege.Mode) {
                 Text("Darken while this app is open", Modifier.weight(1f), fontSize = 14.sp)
                 Switch(on, { v -> apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("crush_apps", apps).apply() })
             }
-            Text("Greys up to ${level.toInt()} / 255 become pure black", fontSize = 13.sp)
+            Text("Everything gets ${level.toInt()} darker; greys up to that become pure black. Contrast between tones is kept.", fontSize = 13.sp)
             Slider(level, { level = it }, valueRange = 8f..80f, onValueChangeFinished = { sp.edit().putInt("crush_level", level.toInt()).apply() })
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({ scope.launch { withContext(Dispatchers.IO) { PageDark.applyCrush(level.toInt()) } } }, enabled = mode != Privilege.Mode.None) { Text("Try now") }

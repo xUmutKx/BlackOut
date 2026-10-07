@@ -58,6 +58,37 @@ object Privilege {
         return Out(p.exitValue(), (out.toString() + err.toString()).trim())
     }
 
+    /** One `su` that stays open: running a command through it costs milliseconds instead of starting a new root process every time. */
+    private object RootShell {
+        private var proc: Process? = null
+        private var w: java.io.BufferedWriter? = null
+        private var r: java.io.BufferedReader? = null
+        private fun reset() { try { proc?.destroy() } catch (_: Exception) { }; proc = null; w = null; r = null }
+
+        @Synchronized fun run(cmd: String): Out? {
+            try {
+                if (proc?.isAlive != true) {
+                    val q = ProcessBuilder("su").redirectErrorStream(true).start()
+                    proc = q; w = q.outputStream.bufferedWriter(); r = q.inputStream.bufferedReader()
+                }
+                val out = StringBuilder()
+                val mark = "__BO_END_" + System.nanoTime() + "_"
+                w!!.write(cmd + "\necho " + mark + "\$?\n"); w!!.flush()
+                val until = System.currentTimeMillis() + 60_000
+                while (true) {
+                    if (!r!!.ready()) {
+                        if (System.currentTimeMillis() > until) { reset(); return null }
+                        Thread.sleep(4); continue
+                    }
+                    val line = r!!.readLine()
+                    if (line == null) { reset(); return null }
+                    if (line.startsWith(mark)) return Out(line.removePrefix(mark).trim().toIntOrNull() ?: 0, out.toString().trim())
+                    out.appendLine(line)
+                }
+            } catch (e: Exception) { reset(); return null }
+        }
+    }
+
     private fun runRoot(cmd: String): Out? = try {
         collect(Runtime.getRuntime().exec(arrayOf("su", "-c", cmd)))
     } catch (_: Exception) { null }
@@ -72,7 +103,7 @@ object Privilege {
 
     /** Runs a shell script with the detected power. */
     fun run(script: String): Out = when (mode) {
-        Mode.Root -> runRoot(script) ?: Out(-1, "su failed")
+        Mode.Root -> RootShell.run(script) ?: runRoot(script) ?: Out(-1, "su failed")
         Mode.Shizuku -> runShizuku(script) ?: Out(-1, "Shizuku failed")
         Mode.None -> Out(-1, "no root / Shizuku")
     }
