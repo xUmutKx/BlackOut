@@ -73,6 +73,7 @@ private fun Root() {
     var group by remember { mutableStateOf("all") }   // all / google / samsung
     var query by remember { mutableStateOf("") }
     var limit by remember { mutableFloatStateOf(prefs.getFloat("limit", 56f)) }   // brightest grey that still counts as a dark surface
+    var tint by remember { mutableStateOf(prefs.getInt("tint", 0)) }
     var keep by remember { mutableFloatStateOf(prefs.getFloat("keep", 0f)) }      // % of the original brightness that stays (0 = pure black)
     var apps by remember { mutableStateOf<List<AppRow>>(emptyList()) }
     var open by remember { mutableStateOf<AppRow?>(null) }
@@ -112,10 +113,11 @@ private fun Root() {
     }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        Box(Modifier.weight(1f)) { Column(Modifier.fillMaxSize()) {
         when (page) {
-            "layer" -> {
-                TopBar("Top layer") { page = "home" }
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { LayerPage(mode, prefs) }
+            "colours" -> {
+                TopBar("Colours") { page = "home" }
+                Column(Modifier.verticalScroll(rememberScrollState())) { ColoursPage(apps, prefs, ctx) }
             }
             "module" -> {
                 TopBar("LSPosed module") { page = "home" }
@@ -128,10 +130,20 @@ private fun Root() {
             "notes" -> {
                 TopBar("Samsung Notes") { page = "home" }
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Notes draw their pages themselves, so overlays cannot reach them. This swaps light and dark on the screen only while Samsung Notes is open: the white page becomes the colour below, black text and ink turn light, coloured ink keeps its colour. Other apps are not touched.", fontSize = 14.sp, color = dim)
-                    PagesAppCard("com.samsung.android.app.notes", mode)
+                    Text("Swapping light and dark on the whole screen also turns Notes' own dark toolbars light. The LSPosed way below works inside Notes only: the page (PDF pages, paper, ink) swaps, the toolbars stay dark.", fontSize = 14.sp, color = dim)
+                    PagesModCard("com.samsung.android.app.notes", mode)
+                    EditorAppCard("com.samsung.android.app.notes", mode)
+                    Text("For plain notes, look for \"Dark mode for note backgrounds\" in Samsung Notes' own settings and switch it on.", fontSize = 13.sp, color = dim)
+                    Text("Colours", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
                     PageCard(mode, prefs, showMaster = false)
+                    Text("No LSPosed? Whole screen instead", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
+                    PagesAppCard("com.samsung.android.app.notes", mode)
+                    InvertAppCard("com.samsung.android.app.notes", mode)
                 }
+            }
+            "sysfd" -> {
+                TopBar("Force dark") { page = "home" }
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { SystemForceDarkCard(mode, prefs) }
             }
             "global" -> {
                 TopBar("All Material You apps") { page = "home" }
@@ -156,7 +168,7 @@ private fun Root() {
                                     Text(app.label, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(app.pkg, fontSize = 13.sp, color = dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
-                                Text(when { r == null -> "tap to scan"; r.namesStripped -> "names stripped"; else -> "${r.candidates.size} greys" }, fontSize = 13.sp, color = if (r?.namesStripped == true) Color(0xFFFFB74D) else Accent)
+                                Text(when { r == null -> "not scanned"; r.namesStripped -> "names stripped"; else -> "${r.candidates.size} greys" }, fontSize = 13.sp, color = if (r?.namesStripped == true) Color(0xFFFFB74D) else Accent)
                             }
                         }
                     }
@@ -170,10 +182,12 @@ private fun Root() {
                     when (cat) {
                         "surface" -> Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                             Column(Modifier.padding(16.dp)) {
-                                Text("Which greys count as surfaces: up to #%02X%02X%02X".format(limit.toInt(), limit.toInt(), limit.toInt()), fontSize = 14.sp)
-                                Slider(limit, { limit = it }, valueRange = 24f..96f, onValueChangeFinished = { prefs.edit().putFloat("limit", limit).apply() })
+                                Text("Which greys count as surfaces", fontSize = 14.sp)
+                                GreySlider(limit, { limit = it }) { prefs.edit().putFloat("limit", limit).apply() }
                                 Text(if (keep < 1f) "Result: pure black (#000000)" else "Result: ${keep.toInt()}% of the original brightness stays", fontSize = 14.sp)
                                 Slider(keep, { keep = it }, valueRange = 0f..40f, onValueChangeFinished = { prefs.edit().putFloat("keep", keep).apply() })
+                                TintPicker(tint) { tint = it; prefs.edit().putInt("tint", it).apply() }
+                                GreyPreview(limit, keep, tint)
                                 Text("Higher limit = also darkens lighter greys (cards, sheets). Re-scan an app after changing it.", color = dim, fontSize = 13.sp)
                             }
                         }
@@ -194,7 +208,7 @@ private fun Root() {
                             SetRow(Icons.Filled.Tune, "Colours", "Grey limit ${limit.toInt()}, keep ${keep.toInt()}%") { cat = "surface" }
                             SetRow(Icons.Filled.Security, "Root access", if (mode == Privilege.Mode.None) "Not available" else "Using ${Privilege.detail}") { cat = "access" }
                             SetRow(Icons.Filled.BugReport, "Help", "See why something does not work") { cat = "diag" }
-                            SetRow(Icons.Filled.Info, "About", "BlackOut 0.8") { cat = "about" }
+                            SetRow(Icons.Filled.Info, "About", "BlackOut 0.14") { cat = "about" }
                         }
                     }
                 }
@@ -211,13 +225,13 @@ private fun Root() {
                 Row(Modifier.clip(RoundedCornerShape(20.dp)).clickable { page = "settings"; cat = "access" }.background(MaterialTheme.colorScheme.surfaceContainer).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(9.dp).clip(CircleShape).background(if (mode != Privilege.Mode.None) Color(0xFF4CAF50) else Color(0xFFF44336)))
                     Spacer(Modifier.width(8.dp))
-                    Text(if (mode == Privilege.Mode.None) "No root or Shizuku (tap to fix)" else "Ready · ${Privilege.detail}", fontSize = 14.sp)
+                    Text(if (mode == Privilege.Mode.None) "No root or Shizuku" else "Ready · ${Privilege.detail}", fontSize = 14.sp)
                 }
                 WatcherReminder(prefs, mode)
                 Text("Pick a way", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
-                SetRow(Icons.Filled.Layers, "Top layer", "Dims the screen. No root needed.", big = true, badge = if (prefs.getBoolean("ly_on", false)) "ON" else "OFF") { page = "layer" }
                 SetRow(Icons.Filled.DarkMode, "Dark pages", "White pages turn dark. Needs root.", big = true, badge = if (prefs.getBoolean("pg_on", false)) "ON" else "OFF") { page = "pages" }
                 SetRow(Icons.Filled.Extension, "LSPosed module", "Pure black in the apps you pick.", big = true, badge = if (Status.isActive()) "ON" else null) { page = "module" }
+                SetRow(Icons.Filled.InvertColors, "Force dark", "Light-only apps turn dark. Needs root.", big = true, badge = if (prefs.getBoolean("fdsys_on", false)) "ON" else "OFF") { page = "sysfd" }
                 SetRow(Icons.Filled.AutoAwesome, "Material You apps", "Blacken Android's dark palette. Needs root.", big = true) { page = "global" }
                 Text("More", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
                 SetRow(Icons.Filled.Apps, "Apps", "${apps.count { it.launch }} apps · Google and Samsung first", big = true) { page = "apps" }
@@ -226,6 +240,13 @@ private fun Root() {
                 }
                 SetRow(Icons.Filled.Settings, "Settings", "Root access, colours, help", big = true) { page = "settings"; cat = "" }
                 PrivacyNote()
+            }
+        }
+        } }
+        NavigationBar(containerColor = Color(0xFF0A0A0C)) {
+            listOf(Triple("home", "Home", Icons.Filled.Home), Triple("apps", "Apps", Icons.Filled.Apps), Triple("colours", "Colours", Icons.Filled.Palette), Triple("settings", "Settings", Icons.Filled.Settings)).forEach { (k, n, ic) ->
+                NavigationBarItem(page == k || (k == "home" && page !in setOf("apps", "colours", "settings")), { page = k; cat = "" }, { Icon(ic, n) }, label = { Text(n) },
+                    colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Black, indicatorColor = Accent, selectedTextColor = Accent, unselectedIconColor = Color(0xFF9A9AA6), unselectedTextColor = Color(0xFF9A9AA6)))
             }
         }
     }
@@ -302,6 +323,7 @@ private fun AppIcon(pkg: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int, keep: Float, mode: Privilege.Mode, onScan: () -> Unit, onBack: () -> Unit) {
+    val tintCtx = LocalContext.current
     val scope = rememberCoroutineScope()
     var msg by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -324,18 +346,24 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             item {
                 if (error != null) Text("Scan failed: $error", color = Color(0xFFF44336))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val spx = LocalContext.current.getSharedPreferences("blackout", Context.MODE_PRIVATE)
+                    ForceDarkCard(app.pkg, mode)
+                    PagesModCard(app.pkg, mode)
+                    PagesAppCard(app.pkg, mode)
+                    InvertAppCard(app.pkg, mode)
+                    RecolorCard(app.pkg, spx)
+                }
                 if (result != null) {
                     Text("${result.entries} colour entries (${result.references} references, ${result.nightEntries} night)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (result.namesStripped) CrushCard(app.pkg, mode)
-                    PagesAppCard(app.pkg, mode)
-                    LayerAppCard(app.pkg)
                     if (active >= 0) Text(if (active > 0) "$active overlays are active now" else "No BlackOut overlay active", fontSize = 13.sp, color = if (active > 0) Accent else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button({
                         busy = true; progress = "Starting…"
                         scope.launch {
-                            val r = withContext(Dispatchers.IO) { Overlays.apply(app.pkg, chosen.map { it.name to Overlays.scaled(it.color, keep) }) { d, n -> progress = "Applying $d / $n" } }
+                            val r = withContext(Dispatchers.IO) { Overlays.apply(app.pkg, chosen.map { it.name to Overlays.scaled(it.color, keep, tintCtx.getSharedPreferences("blackout", android.content.Context.MODE_PRIVATE).getInt("tint", 0)) }) { d, n -> progress = "Applying $d / $n" } }
                             msg = r.message; busy = false; progress = ""
                             if (r.ok) { active = withContext(Dispatchers.IO) { Overlays.activeCount(app.pkg) } }
                         }
@@ -362,7 +390,7 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                 val on = c.name !in off
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { if (on) off.add(c.name) else off.remove(c.name) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(on, { if (on) off.add(c.name) else off.remove(c.name) })
-                    Swatch(c.color); Text("→", Modifier.padding(horizontal = 6.dp)); Swatch(Overlays.scaled(c.color, keep))
+                    Swatch(c.color); Text("→", Modifier.padding(horizontal = 6.dp)); Swatch(Overlays.scaled(c.color, keep, LocalContext.current.getSharedPreferences("blackout", android.content.Context.MODE_PRIVATE).getInt("tint", 0)))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(c.name, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

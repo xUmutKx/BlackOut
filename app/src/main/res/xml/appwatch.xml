@@ -4,4 +4,5 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:notificationTimeout="150"
     android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
     android:description="@string/watch_desc" />

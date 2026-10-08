@@ -3,6 +3,7 @@
     <!-- list the installed Google apps; nothing leaves the phone (no INTERNET permission) -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+        <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -23,6 +24,10 @@
         <meta-data android:name="xposedsharedprefs" android:value="true" />
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+        </receiver>
+        <!-- the LSPosed module tells BlackOut (numbers only) that it is running inside an app -->
+        <receiver android:name=".HookReceiver" android:exported="true">
+            <intent-filter><action android:name="com.umutk.blackout.HOOK_STATUS" /></intent-filter>
         </receiver>
         <service
             android:name=".AppWatch"

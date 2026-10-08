@@ -10,8 +10,10 @@ object Overlays {
     private fun oname(pkg: String, res: String) = tag(pkg) + safe(res)
 
     /** The colour with every channel scaled by [keep] (0 = pure black), keeping alpha. */
-    fun scaled(color: Int, keep: Float): Int {
-        val r = (((color shr 16) and 255) * keep).toInt(); val g = (((color shr 8) and 255) * keep).toInt(); val b = ((color and 255) * keep).toInt()
+    fun scaled(color: Int, keep: Float, tint: Int = 0): Int {
+        val r = ((((color shr 16) and 255) * keep).toInt() + ((tint shr 16) and 255)).coerceAtMost(255)
+        val g = ((((color shr 8) and 255) * keep).toInt() + ((tint shr 8) and 255)).coerceAtMost(255)
+        val b = (((color and 255) * keep).toInt() + (tint and 255)).coerceAtMost(255)
         return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
@@ -80,6 +82,10 @@ object Overlays {
     /** What the phone says about overlays: version, who we run as, the cmd usage. Shown in Settings > Diagnostics. */
     fun diagnose(): String = Privilege.run(
         "echo \"Android \$(getprop ro.build.version.release) (SDK \$(getprop ro.build.version.sdk)), \$(getprop ro.product.manufacturer) \$(getprop ro.product.model)\"; id; " +
+        "echo; echo \"force dark property: \$(getprop debug.hwui.force_dark)\"; " +
+        // read-only look at the screen colour transform (what Dark pages and the black level hand to SurfaceFlinger) and the system inversion switches
+        "echo \"SurfaceFlinger: \$(service check SurfaceFlinger 2>&1 | head -1)\"; dumpsys SurfaceFlinger 2>/dev/null | grep -i -m3 -E 'color.*transform|colorMatrix'; " +
+        "echo \"inversion: \$(settings get secure accessibility_display_inversion_enabled) force invert: \$(settings get secure accessibility_force_invert_color_enabled)\"; " +
         "echo; cmd overlay 2>&1 | grep -i -A3 'fabricate' | head -12; echo; cmd overlay list --user 0 2>&1 | grep -c 'bo_'"
     ).text
 

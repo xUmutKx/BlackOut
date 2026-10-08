@@ -49,10 +49,13 @@ object PageDark {
         return Privilege.run("service call SurfaceFlinger 1015 i32 1 $f")
     }
 
-    fun fromPrefs(sp: android.content.SharedPreferences): Cfg {
-        val bg = (sp.getFloat("pg_r", 0f).toInt() shl 16) or (sp.getFloat("pg_g", 0f).toInt() shl 8) or sp.getFloat("pg_b", 0f).toInt()
-        val t = sp.getFloat("pg_text", 235f).toInt().let { (it shl 16) or (it shl 8) or it }
-        return Cfg(bg, t, sp.getBoolean("pg_hue", true))
+    fun fromPrefs(sp: android.content.SharedPreferences): Cfg = from({ k, d -> sp.getFloat(k, d) }, sp.getBoolean("pg_hue", true))
+
+    /** The saved colours, read through [f] so the LSPosed module (which has no SharedPreferences) can use it too. */
+    fun from(f: (String, Float) -> Float, hueSafe: Boolean): Cfg {
+        val bg = (f("pg_r", 0f).toInt() shl 16) or (f("pg_g", 0f).toInt() shl 8) or f("pg_b", 0f).toInt()
+        val t = f("pg_text", 235f).toInt().let { (it shl 16) or (it shl 8) or it }
+        return Cfg(bg, t, hueSafe)
     }
 
     /** Raises the black level: every tone gets [level] (0..80 of 255) darker, so the greys up to it become pure black. The slope stays 1: contrast between tones is not stretched. */

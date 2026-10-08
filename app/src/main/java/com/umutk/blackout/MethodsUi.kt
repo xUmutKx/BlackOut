@@ -55,10 +55,16 @@ fun AccessRow(mode: Privilege.Mode) {
                     on = AppWatch.enabled(ctx); msg = if (on) null else "Root could not switch it on: ${o.text.take(100)}"
                 }
             }, enabled = mode == Privilege.Mode.Root || mode == Privilege.Mode.Shizuku) { Text("Turn on (root)") }
+            if (AppWatch.canSelfEnable(ctx)) Button({ AppWatch.enableSelf(ctx); on = AppWatch.enabled(ctx); if (!on) msg = "Android did not switch it on. Open settings instead." }) { Text("Turn on (one tap)") }
             OutlinedButton({ ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Text("Open settings") }
             TextButton({ on = AppWatch.enabled(ctx) }) { Text("Refresh") }
         }
         msg?.let { Text(it, fontSize = 13.sp, color = Color(0xFFF44336)) }
+        if (!on && !AppWatch.canSelfEnable(ctx) && mode == Privilege.Mode.None) {
+            Text("No root? Run this once from a computer (or Shizuku/wireless adb), then the button above works by itself:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+            Text(AppWatch.ADB_GRANT, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+            TextButton({ (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("adb", AppWatch.ADB_GRANT)) }) { Text("Copy command") }
+        }
     }
 }
 
@@ -103,6 +109,7 @@ fun LayerPage(mode: Privilege.Mode, sp: SharedPreferences) {
                 }
                 Text("Darkness ${alpha.toInt()}%", fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
                 Slider(alpha, { alpha = it }, valueRange = 0f..92f, onValueChangeFinished = { sp.edit().putInt("ly_alpha", alpha.toInt()).apply() })
+                LayerPreview(alpha, color)
                 Text("Colour", fontSize = 14.sp)
                 Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     LayerColors.forEach { (_, c) ->
@@ -147,6 +154,7 @@ fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
     var on by remember { mutableStateOf(sp.getBoolean("lsp_on", true)) }
     var limit by remember { mutableFloatStateOf(sp.getFloat("limit", 56f)) }
     var keep by remember { mutableFloatStateOf(sp.getFloat("keep", 0f)) }
+    var tint by remember { mutableStateOf(sp.getInt("tint", 0)) }
     var active by remember { mutableStateOf(Status.isActive()) }
     var msg by remember { mutableStateOf<String?>(null) }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
@@ -177,10 +185,20 @@ fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
                     Text("Apply in the ticked apps", Modifier.weight(1f), fontWeight = FontWeight.Medium)
                     Switch(on, { on = it; sp.edit().putBoolean("lsp_on", it).apply() })
                 }
-                Text("Greys up to #%02X%02X%02X count as surfaces".format(limit.toInt(), limit.toInt(), limit.toInt()), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
-                Slider(limit, { limit = it }, valueRange = 24f..96f, onValueChangeFinished = { sp.edit().putFloat("limit", limit).apply() })
+                Text("Which greys count as surfaces", fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                GreySlider(limit, { limit = it }) { sp.edit().putFloat("limit", limit).apply() }
                 Text(if (keep < 1f) "Result: pure black" else "Result: ${keep.toInt()}% of the brightness stays", fontSize = 13.sp)
                 Slider(keep, { keep = it }, valueRange = 0f..40f, onValueChangeFinished = { sp.edit().putFloat("keep", keep).apply() })
+                TintPicker(tint) { tint = it; sp.edit().putInt("tint", it).apply() }
+                GreyPreview(limit, keep, tint)
+                var web by remember { mutableStateOf(sp.getBoolean("web_black", true)) }
+                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Web pages inside apps too", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        Text("The Google app's results, mail bodies and in-app browsers are web pages: Android's colour calls never reach them, so a small script blackens their dark grey backgrounds (same limit).", fontSize = 13.sp, color = dim)
+                    }
+                    Switch(web, { web = it; sp.edit().putBoolean("web_black", it).apply() })
+                }
                 Text("Changes apply when an app starts. If an app ignores them:", fontSize = 13.sp, color = dim)
                 OutlinedButton({
                     scope.launch {
@@ -188,6 +206,15 @@ fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
                         msg = if (o.text.contains("ok")) "Settings are readable by the module now." else "Failed: ${o.text.take(100)}"
                     }
                 }, enabled = mode != Privilege.Mode.None) { Text("Fix settings access (root)") }
+            }
+        }
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.padding(16.dp)) {
+                val fd = sp.getStringSet("fd_apps", emptySet())?.size ?: 0
+                val pg = sp.getStringSet("pgmod_apps", emptySet())?.size ?: 0
+                Text("Apps without a dark theme", fontWeight = FontWeight.Bold)
+                Text("The greys above only exist in apps that have a dark theme. For light-only apps (white, light blue or grey pages) open the app in Apps and switch on Force dark there; add Pure black for #000000. For readers and Notes use Dark pages, only the pages.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
+                Text("Force dark: $fd apps · Only the pages: $pg apps", fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
         PrivacyNote()
@@ -220,6 +247,32 @@ fun PagesAppCard(pkg: String, mode: Privilege.Mode) {
     }
 }
 
+/** In an app's page: Android's own colour inversion while this app is open. Blunt (photos turn negative) but it works on every rooted phone, whatever the app draws with. */
+@Composable
+fun InvertAppCard(pkg: String, mode: Privilege.Mode) {
+    val ctx = LocalContext.current
+    val sp = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
+    val scope = rememberCoroutineScope()
+    var apps by remember { mutableStateOf(sp.getStringSet("inv_apps", emptySet()) ?: emptySet()) }
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(vertical = 6.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Invert colours while this app is open", fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                    Text("White pages turn black and black text turns white, with Android's own colour inversion, only while this app is in front. Photos turn negative. Use it when Dark pages does nothing.", fontSize = 13.sp, color = dim)
+                }
+                Switch(pkg in apps, { v ->
+                    apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("inv_apps", apps).apply()
+                    if (v && !AppWatch.enabled(ctx)) scope.launch { withContext(Dispatchers.IO) { AppWatch.enableWithPower() } }
+                }, enabled = mode != Privilege.Mode.None)
+            }
+            if (mode == Privilege.Mode.None) Text("Needs root or Shizuku.", fontSize = 13.sp, color = Color(0xFFFFB74D))
+            OutlinedButton({ scope.launch { withContext(Dispatchers.IO) { Privilege.run("settings put secure accessibility_display_inversion_enabled 0") } } }, enabled = mode != Privilege.Mode.None) { Text("Turn inversion off now") }
+        }
+    }
+}
+
 /** Per-app effects need the accessibility watcher: say so on the home screen when one is on and the watcher is off. */
 @Composable
 fun WatcherReminder(sp: SharedPreferences, mode: Privilege.Mode) {
@@ -234,6 +287,30 @@ fun WatcherReminder(sp: SharedPreferences, mode: Privilege.Mode) {
             Text("The watcher is off", fontWeight = FontWeight.Bold, color = Color(0xFFFFB74D))
             Text("You turned on effects for apps (top layer, dark pages or black level) but they only work while the accessibility watcher runs.", fontSize = 14.sp, color = Color(0xFFE0C9A0))
             AccessRow(mode)
+        }
+    }
+}
+
+/** Samsung Notes style apps: the list's small previews are drawn through Android's Canvas (the LSPosed hooks reach them), the note itself is drawn by the app's own engine and is not. Inside a note the whole-screen page colours are used instead. */
+@Composable
+fun EditorAppCard(pkg: String, mode: Privilege.Mode) {
+    val ctx = LocalContext.current
+    val sp = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
+    var apps by remember { mutableStateOf(sp.getStringSet("editor_apps", emptySet()) ?: emptySet()) }
+    val scope = rememberCoroutineScope()
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(vertical = 6.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Dark inside a note", fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                    Text("On the list screen the LSPosed page swap works. Open a note and the page colours (Dark pages) switch on for that screen only, then off again when you go back. Toolbars may look light inside a note.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(pkg in apps, { v ->
+                    apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("editor_apps", apps).apply()
+                    if (v && !AppWatch.enabled(ctx)) scope.launch { withContext(Dispatchers.IO) { AppWatch.enableWithPower() } }
+                }, enabled = mode != Privilege.Mode.None)
+            }
+            if (mode == Privilege.Mode.None) Text("Needs root or Shizuku.", fontSize = 13.sp, color = Color(0xFFFFB74D))
         }
     }
 }

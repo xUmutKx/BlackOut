@@ -40,6 +40,7 @@ fun CrushCard(pkg: String, mode: Privilege.Mode) {
             }
             Text("Everything gets ${level.toInt()} darker; greys up to that become pure black. Contrast between tones is kept.", fontSize = 13.sp)
             Slider(level, { level = it }, valueRange = 8f..80f, onValueChangeFinished = { sp.edit().putInt("crush_level", level.toInt()).apply() })
+            LevelPreview(level)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({ scope.launch { withContext(Dispatchers.IO) { PageDark.applyCrush(level.toInt()) } } }, enabled = mode != Privilege.Mode.None) { Text("Try now") }
                 OutlinedButton({ scope.launch { withContext(Dispatchers.IO) { PageDark.clear() } } }, enabled = mode != Privilege.Mode.None) { Text("Undo") }
