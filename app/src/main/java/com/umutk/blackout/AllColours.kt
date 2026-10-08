@@ -44,8 +44,7 @@ fun AllColoursCard(app: AppRow, mode: Privilege.Mode) {
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
 
     Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("All colours of this app", fontWeight = FontWeight.Medium, fontSize = 16.sp)
-        Text("Every solid colour the app defines, whites and accents included. Tap one to set its colour. Your changes are kept for this app and made again when the app opens.", fontSize = 13.sp, color = dim)
+        Text("Colours", fontWeight = FontWeight.Medium, fontSize = 16.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button({
                 busy = true
@@ -64,7 +63,6 @@ fun AllColoursCard(app: AppRow, mode: Privilege.Mode) {
             }, enabled = !busy) { Text("Restore original") }
         }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (msg.isNotEmpty()) Text(msg, fontSize = 13.sp, color = dim)
         all?.forEach { c ->
             val now = made[c.name] ?: c.color
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(enabled = mode != Privilege.Mode.None) { editing = c }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -72,7 +70,6 @@ fun AllColoursCard(app: AppRow, mode: Privilege.Mode) {
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(c.name, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("#%06X".format(now and 0xFFFFFF), fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = dim)
                 }
             }
         }
@@ -88,6 +85,7 @@ fun AllColoursCard(app: AppRow, mode: Privilege.Mode) {
 @Composable
 private fun ColourEditor(app: AppRow, c: Candidate, sp: SharedPreferences, now: Int, onDone: (Int?, String) -> Unit, onCancel: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
     var hex by remember(c.name) { mutableStateOf("%06X".format(now and 0xFFFFFF)) }
     var busy by remember(c.name) { mutableStateOf(false) }
     val presets = listOf(0xFF000000.toInt(), 0xFF121212.toInt(), 0xFF1E1E1E.toInt(), 0xFF0B1020.toInt(), 0xFFFFFFFF.toInt(), 0xFF8C9EFF.toInt())
@@ -98,8 +96,7 @@ private fun ColourEditor(app: AppRow, c: Candidate, sp: SharedPreferences, now: 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     presets.forEach { col -> Box(Modifier.size(34.dp).clip(CircleShape).background(Color(col)).border(1.dp, Color(0x55FFFFFF), CircleShape).clickable { hex = "%06X".format(col and 0xFFFFFF) }) }
                 }
-                OutlinedTextField(hex, { hex = it.uppercase().filter { ch -> ch in '0'..'9' || ch in 'A'..'F' }.take(6) }, singleLine = true, label = { Text("Hex, e.g. 1E1E1E") }, enabled = !busy)
-                Text("Android's answer is shown if the app does not let this colour change.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(hex, { hex = it.uppercase().filter { ch -> ch in '0'..'9' || ch in 'A'..'F' }.take(6) }, singleLine = true, label = { Text("#") }, enabled = !busy)
             }
         },
         confirmButton = {
@@ -112,6 +109,7 @@ private fun ColourEditor(app: AppRow, c: Candidate, sp: SharedPreferences, now: 
                     val r = withContext(Dispatchers.IO) { Overlays.apply(app.pkg, listOf(c.name to col)) }
                     if (r.ok) Overlays.saveOverride(sp, app.pkg, c.name, col)
                     busy = false
+                    android.widget.Toast.makeText(ctx, if (r.ok) "Done. Reopen the app." else r.message, android.widget.Toast.LENGTH_LONG).show()
                     onDone(if (r.ok) col else null, r.message)
                 }
             }, enabled = !busy && hex.length == 6) { Text("Apply") }

@@ -80,7 +80,7 @@ class ColorPicker(private val svc: AccessibilityService, private val wm: WindowM
         }
         val top = LinearLayout(svc).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val sw = dot(0xFF777777.toInt(), 30).also { swatch = it }; top.addView(sw)
-        val hx = TextView(svc).apply { text = "drag the ring"; setTextColor(Color.WHITE); textSize = 13f; typeface = android.graphics.Typeface.MONOSPACE; setPadding(px(4), 0, px(8), 0) }.also { hex = it }
+        val hx = TextView(svc).apply { text = ""; setTextColor(Color.WHITE); textSize = 13f; typeface = android.graphics.Typeface.MONOSPACE; setPadding(px(4), 0, px(8), 0) }.also { hex = it }
         top.addView(hx, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(TextView(svc).apply { text = "✕"; setTextColor(0xFFFFFFFF.toInt()); textSize = 18f; setPadding(px(12), px(2), px(6), px(2)); setOnClickListener { hide() } })
         box.addView(top)

@@ -130,13 +130,9 @@ private fun Root() {
             "notes" -> {
                 TopBar("Samsung Notes") { page = "home" }
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Swapping light and dark on the whole screen also turns Notes' own dark toolbars light. The LSPosed way below works inside Notes only: the page (PDF pages, paper, ink) swaps, the toolbars stay dark.", fontSize = 14.sp, color = dim)
                     PagesModCard("com.samsung.android.app.notes", mode)
                     EditorAppCard("com.samsung.android.app.notes", mode)
-                    Text("For plain notes, look for \"Dark mode for note backgrounds\" in Samsung Notes' own settings and switch it on.", fontSize = 13.sp, color = dim)
-                    Text("Colours", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
                     PageCard(mode, prefs, showMaster = false)
-                    Text("No LSPosed? Whole screen instead", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
                     PagesAppCard("com.samsung.android.app.notes", mode)
                     InvertAppCard("com.samsung.android.app.notes", mode)
                 }
@@ -228,17 +224,15 @@ private fun Root() {
                     Text(if (mode == Privilege.Mode.None) "No root or Shizuku" else "Ready · ${Privilege.detail}", fontSize = 14.sp)
                 }
                 WatcherReminder(prefs, mode)
-                Text("Pick a way", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
-                SetRow(Icons.Filled.DarkMode, "Dark pages", "White pages turn dark. Needs root.", big = true, badge = if (prefs.getBoolean("pg_on", false)) "ON" else "OFF") { page = "pages" }
-                SetRow(Icons.Filled.Extension, "LSPosed module", "Pure black in the apps you pick.", big = true, badge = if (Status.isActive()) "ON" else null) { page = "module" }
-                SetRow(Icons.Filled.InvertColors, "Force dark", "Light-only apps turn dark. Needs root.", big = true, badge = if (prefs.getBoolean("fdsys_on", false)) "ON" else "OFF") { page = "sysfd" }
-                SetRow(Icons.Filled.AutoAwesome, "Material You apps", "Blacken Android's dark palette. Needs root.", big = true) { page = "global" }
-                Text("More", fontSize = 14.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
-                SetRow(Icons.Filled.Apps, "Apps", "${apps.count { it.launch }} apps · Google and Samsung first", big = true) { page = "apps" }
+                SetRow(Icons.Filled.DarkMode, "Dark pages", "White pages", big = true, badge = if (prefs.getBoolean("pg_on", false)) "ON" else "OFF") { page = "pages" }
+                SetRow(Icons.Filled.Extension, "LSPosed module", "Black apps", big = true, badge = if (Status.isActive()) "ON" else null) { page = "module" }
+                SetRow(Icons.Filled.InvertColors, "Force dark", "Light apps", big = true, badge = if (prefs.getBoolean("fdsys_on", false)) "ON" else "OFF") { page = "sysfd" }
+                SetRow(Icons.Filled.AutoAwesome, "Google apps", "Material You", big = true) { page = "global" }
+                SetRow(Icons.Filled.Apps, "Apps", "${apps.count { it.launch }}", big = true) { page = "apps" }
                 apps.firstOrNull { it.pkg == "com.samsung.android.app.notes" }?.let { n ->
-                    SetRow(Icons.Filled.EditNote, "Samsung Notes", "Page background black, text and ink stay readable", big = true) { page = "notes" }
+                    SetRow(Icons.Filled.EditNote, "Samsung Notes", "Pages", big = true) { page = "notes" }
                 }
-                SetRow(Icons.Filled.Settings, "Settings", "Root access, colours, help", big = true) { page = "settings"; cat = "" }
+                SetRow(Icons.Filled.Settings, "Settings", "", big = true) { page = "settings"; cat = "" }
                 PrivacyNote()
             }
         }
@@ -355,7 +349,6 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                     RecolorCard(app.pkg, spx)
                 }
                 if (result != null) {
-                    Text("${result.entries} colour entries (${result.references} references, ${result.nightEntries} night)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (result.namesStripped) CrushCard(app.pkg, mode)
                     if (active >= 0) Text(if (active > 0) "$active overlays are active now" else "No BlackOut overlay active", fontSize = 13.sp, color = if (active > 0) Accent else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -394,7 +387,6 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(c.name, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("#%06X".format(c.color and 0xFFFFFF) + if (c.night) "  night" else "", fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

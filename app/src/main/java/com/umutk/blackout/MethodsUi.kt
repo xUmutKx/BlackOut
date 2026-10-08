@@ -231,10 +231,7 @@ fun PagesAppCard(pkg: String, mode: Privilege.Mode) {
     Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(vertical = 6.dp)) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Dark pages while this app is open", fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                    Text("White pages turn black, text turns white. Set the colours in Dark pages.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Text("Dark pages", Modifier.weight(1f), fontWeight = FontWeight.Medium, fontSize = 15.sp)
                 Switch(pkg in apps, { v ->
                     apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("pages_apps", apps).apply()
                     // the watcher is what notices the app opening; with root it can be switched on right here
@@ -254,21 +251,13 @@ fun InvertAppCard(pkg: String, mode: Privilege.Mode) {
     val sp = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf(sp.getStringSet("inv_apps", emptySet()) ?: emptySet()) }
-    val dim = MaterialTheme.colorScheme.onSurfaceVariant
     Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(vertical = 6.dp)) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Invert colours while this app is open", fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                    Text("White pages turn black and black text turns white, with Android's own colour inversion, only while this app is in front. Photos turn negative. Use it when Dark pages does nothing.", fontSize = 13.sp, color = dim)
-                }
-                Switch(pkg in apps, { v ->
-                    apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("inv_apps", apps).apply()
-                    if (v && !AppWatch.enabled(ctx)) scope.launch { withContext(Dispatchers.IO) { AppWatch.enableWithPower() } }
-                }, enabled = mode != Privilege.Mode.None)
-            }
-            if (mode == Privilege.Mode.None) Text("Needs root or Shizuku.", fontSize = 13.sp, color = Color(0xFFFFB74D))
-            OutlinedButton({ scope.launch { withContext(Dispatchers.IO) { Privilege.run("settings put secure accessibility_display_inversion_enabled 0") } } }, enabled = mode != Privilege.Mode.None) { Text("Turn inversion off now") }
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Invert", Modifier.weight(1f), fontWeight = FontWeight.Medium, fontSize = 15.sp)
+            Switch(pkg in apps, { v ->
+                apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("inv_apps", apps).apply()
+                if (v && !AppWatch.enabled(ctx)) scope.launch { withContext(Dispatchers.IO) { AppWatch.enableWithPower() } }
+            }, enabled = mode != Privilege.Mode.None)
         }
     }
 }
