@@ -60,14 +60,11 @@ fun AboutPage() {
         Text("by UmutK", fontSize = 16.sp, color = AccentC, fontWeight = FontWeight.Medium)
         Surface(shape = RoundedCornerShape(16.dp), color = cs.surfaceContainer) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("Version" to ver, "Package" to ctx.packageName, "Android" to "${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})",
-                    "Device" to "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}").forEach { (k, v) ->
+                listOf("Version" to ver, "Android" to android.os.Build.VERSION.RELEASE, "Device" to "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}").forEach { (k, v) ->
                     Row { Text(k, Modifier.weight(1f), color = cs.onSurfaceVariant, fontSize = 14.sp); Text(v, fontSize = 14.sp) }
                 }
             }
         }
         OutlinedButton({ ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/xUmutKx/BlackOut")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }, Modifier.fillMaxWidth()) { Text("GitHub · xUmutKx/BlackOut") }
-        Text("Turns the grey surfaces of your apps into pure AMOLED black: with root, with an accessibility layer, or with an LSPosed module.", fontSize = 14.sp, color = cs.onSurfaceVariant)
-        PrivacyNote()
     }
 }

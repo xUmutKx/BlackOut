@@ -26,7 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-const val PRIVACY = "No data is shared. BlackOut has no internet permission: nothing you do here ever leaves your phone."
+const val PRIVACY = "No internet permission. Nothing leaves the phone."
 
 /** The privacy promise, shown on the home screen, in About and on the method pages. */
 @Composable
@@ -125,7 +125,6 @@ fun LayerPage(mode: Privilege.Mode, sp: SharedPreferences) {
                 Text("It dims evenly: greys get darker and white turns grey. For pure black use Dark pages or the module.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 8.dp))
             }
         }
-        PrivacyNote()
     }
 }
 
@@ -217,7 +216,6 @@ fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
                 Text("Force dark: $fd apps · Only the pages: $pg apps", fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
-        PrivacyNote()
     }
 }
 

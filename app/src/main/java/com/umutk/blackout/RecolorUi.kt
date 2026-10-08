@@ -50,7 +50,6 @@ fun RecolorCard(pkg: String, sp: SharedPreferences) {
                     IconButton({ RecolorRules.put(sp, pkg, rules - r); rules = RecolorRules.get(sp, pkg) }, Modifier.size(32.dp)) { Icon(Icons.Filled.Close, "Remove", Modifier.size(18.dp)) }
                 }
             }
-            Text("Turns into", fontSize = 13.sp, color = dim)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Black" to 0x000000, "Charcoal" to 0x121212, "Graphite" to 0x1E1F22, "Navy" to 0x0B1220, "Warm" to 0x1A1410, "Forest" to 0x0C1510).forEach { (n, c) ->
                     FilterChip(to == c, { to = c }, { Text(n) }, leadingIcon = { Dot(c, 16) })
@@ -63,8 +62,12 @@ fun RecolorCard(pkg: String, sp: SharedPreferences) {
                     if (code.length == 6 && c != null) { RecolorRules.add(sp, pkg, c or -0x1000000, to or -0x1000000, 12); code = ""; rules = RecolorRules.get(sp, pkg) }
                 }, enabled = code.length == 6 && code.toIntOrNull(16) != null) { Text("Add") }
             }
-            OutlinedButton({ RecolorRules.add(sp, pkg, 0xFFFFFF, 0x000000, 6); rules = RecolorRules.get(sp, pkg) }, Modifier.fillMaxWidth()) { Text("White → black (one tap)") }
-            OutlinedButton({ RecolorRules.add(sp, pkg, 0xFFFFFF, 0x1E1E1E, 6); rules = RecolorRules.get(sp, pkg) }, Modifier.fillMaxWidth()) { Text("White → soft dark grey (less harsh, for light browsers)") }
+            // live preview: the white page and what it becomes, updated as soon as another colour is chosen
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Dot(0xFFFFFF, 40); Text("→", fontSize = 20.sp); Dot(to, 40)
+                Text("#%06X".format(to and 0xFFFFFF), fontSize = 13.sp, color = dim, fontFamily = FontFamily.Monospace)
+            }
+            Button({ RecolorRules.add(sp, pkg, 0xFFFFFF, to, 6); rules = RecolorRules.get(sp, pkg) }, Modifier.fillMaxWidth()) { Text("Save white → this colour") }
             Button({ sp.edit().putString("pick_go", pkg).apply() }) { Icon(Icons.Filled.Colorize, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Pick on screen") }
         }
     }

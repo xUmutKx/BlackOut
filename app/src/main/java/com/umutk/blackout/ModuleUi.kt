@@ -100,8 +100,8 @@ private fun HookStatusBlock(r: HookReport?, wanted: Boolean) {
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.padding(top = 8.dp)) {
         if (r == null) {
-            Text("Module not seen in this app yet", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = warn)
-            Text("In LSPosed open Modules > BlackOut and tick this app. Then press Restart app, open it and wait 5 seconds.", fontSize = 13.sp, color = dim)
+            Text("Not active yet", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = warn)
+            Text("LSPosed > BlackOut > tick app > Restart app", fontSize = 13.sp, color = dim)
             return
         }
         val age = (System.currentTimeMillis() - r.at) / 1000
