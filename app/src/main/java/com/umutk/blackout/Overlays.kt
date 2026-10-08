@@ -73,6 +73,25 @@ object Overlays {
         return if (left == 0) Result(true, "Removed. Restart the app to see the original colours.") else Result(false, "$left overlays are still enabled")
     }
 
+    /** Colours the user set by hand, per app: resource name to colour, kept as "ov_<pkg>" in preferences. */
+    fun overrides(sp: android.content.SharedPreferences, pkg: String): Map<String, Int> =
+        sp.getString("ov_$pkg", "").orEmpty().split(';').mapNotNull { p ->
+            val i = p.lastIndexOf('='); if (i <= 0) null else p.substring(i + 1).toLongOrNull(16)?.let { p.substring(0, i) to (it.toInt() or -0x1000000) }
+        }.toMap()
+
+    fun saveOverride(sp: android.content.SharedPreferences, pkg: String, name: String, color: Int?) {
+        val m = overrides(sp, pkg).toMutableMap()
+        if (color == null) m.remove(name) else m[name] = color
+        sp.edit().putString("ov_$pkg", m.entries.joinToString(";") { "${it.key}=%06x".format(it.value and 0xFFFFFF) }).apply()
+    }
+
+    /** When an app with hand-set colours comes to the front and its overlays are gone (reboot, or Android dropped them), they are made again. */
+    fun reapply(sp: android.content.SharedPreferences, pkg: String) {
+        val o = overrides(sp, pkg)
+        if (o.isEmpty() || activeCount(pkg) >= o.size) return
+        apply(pkg, o.toList())
+    }
+
     /** How many BlackOut overlays of [pkg] are enabled right now. */
     fun activeCount(pkg: String): Int {
         val out = Privilege.run("cmd overlay list --user 0 | grep '${tag(pkg)}' | grep -c '\\[x\\]'")

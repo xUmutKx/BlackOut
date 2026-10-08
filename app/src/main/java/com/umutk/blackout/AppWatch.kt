@@ -82,6 +82,7 @@ class AppWatch : AccessibilityService() {
         current = pkg
         currentCls = cls
         applyLayer(); applyRoot()
+        if (::sp.isInitialized) io.execute { Overlays.reapply(sp, pkg) }
         if (layer != null) scheduleHoles()
     }
 

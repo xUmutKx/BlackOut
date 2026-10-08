@@ -128,7 +128,7 @@ object Arsc {
     }
 
     /** Reads the app's base APK and returns the colour resources that resolve to a dark neutral grey. */
-    fun scan(apkPath: String, limit: Int = 0x40): ScanResult {
+    fun scan(apkPath: String, limit: Int = 0x40, all: Boolean = false): ScanResult {
         val bytes = ZipFile(apkPath).use { z ->
             val e = z.getEntry("resources.arsc") ?: error("no resources.arsc")
             z.getInputStream(e).readBytes()
@@ -139,7 +139,8 @@ object Arsc {
         val found = LinkedHashMap<Int, Candidate>()
         for (e in entries) {
             val c = resolve(table, e.id, e.night) ?: continue
-            if (isDarkGray(c, limit)) found.putIfAbsent(e.id, Candidate(e.id, e.name, c, e.night))
+            // all = every opaque colour (whites and accents too), otherwise only the dark neutral greys
+            if (if (all) ((c ushr 24) and 255) == 255 else isDarkGray(c, limit)) found.putIfAbsent(e.id, Candidate(e.id, e.name, c, e.night))
         }
         // names like "0_resource_name_obfuscated" cannot be told apart by an overlay
         val distinct = entries.map { it.name }.toSet().size

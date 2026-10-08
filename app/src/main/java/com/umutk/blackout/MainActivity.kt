@@ -398,6 +398,7 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                     }
                 }
             }
+            item { AllColoursCard(app, mode) }
         }
     }
 }
