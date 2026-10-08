@@ -4,13 +4,12 @@ Turns the grey surfaces of your apps into true black, for AMOLED screens.
 
 Android's dark mode is dark grey (around `#121212`), not black. On an OLED panel, black pixels are switched off, so true black saves battery and looks deeper. BlackOut is a set of tools that push apps and pages the rest of the way to black, each with a different trade-off between how much it can do and what it needs.
 
-> **No data leaves your phone.** BlackOut has no internet permission. Settings, app lists and colour rules are stored on the device only.
 
 ## Screenshots
 
-| Home | An app's page |
-|---|---|
-| ![Home](docs/screenshots/home.png) | ![App page](docs/screenshots/app-detail.png) |
+| Home | An app's page | Google, dark | Open from (file picker) |
+|---|---|---|---|
+| ![Home](docs/screenshots/home.png) | ![App page](docs/screenshots/app-detail.png) | ![Google, dark](docs/screenshots/google-dark.png) | ![File picker](docs/screenshots/files-picker.png) |
 
 ## What you need
 
