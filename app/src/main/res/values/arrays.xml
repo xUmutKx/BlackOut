@@ -13,5 +13,6 @@
         <item>com.google.android.keep</item>
         <item>com.google.android.apps.docs</item>
         <item>com.android.chrome</item>
+        <item>com.umutk.blackout</item>
     </string-array>
 </resources>

@@ -15,6 +15,8 @@ import io.github.libxposed.api.XposedModuleInterface
 /** Read by the BlackOut screen: the LSPosed module flips this to true inside BlackOut's own process, so the app can tell the module is active. */
 object Status {
     @JvmStatic fun isActive(): Boolean = false
+    /** Which entry runs the module here: "legacy", "modern" or "none" (set by the hook, like [isActive]). */
+    @JvmStatic fun api(): String = "none"
 }
 
 /**
@@ -25,11 +27,14 @@ object Status {
 object ModuleCore {
     @Volatile private var started = false
 
-    /** Makes BlackOut's own status check answer "active" inside its own process. */
-    fun statusActive(loader: ClassLoader?) {
+    /** Makes BlackOut's own status check answer "active" and name the API ("legacy" or "modern") inside its own process. */
+    fun statusActive(loader: ClassLoader?, api: String) {
         try {
             Hooks.oneIn(loader, "com.umutk.blackout.Status", "isActive", object : Hook() {
                 override fun beforeHookedMethod(param: HookParam) { param.result = true }
+            })
+            Hooks.oneIn(loader, "com.umutk.blackout.Status", "api", object : Hook() {
+                override fun beforeHookedMethod(param: HookParam) { param.result = api }
             })
         } catch (_: Throwable) { }
     }
@@ -42,6 +47,7 @@ object ModuleCore {
         val limit = sp.getFloat("limit", 56f).toInt()
         val keep = sp.getFloat("keep", 0f) / 100f
         val tint = sp.getInt("tint", 0)
+        val soft = sp.getBoolean("amo_soft", false)
         fun ticked(key: String) = pkg in (sp.getStringSet(key, emptySet()) ?: emptySet())
         val keys = try { sp.all?.size ?: -1 } catch (_: Throwable) { -1 }   // 0 = BlackOut's settings could not be read from inside this app
         Reporter.install(pkg, keys, ticked("fd_apps"), ticked("smart_apps"), ticked("pgmod_apps") || (sp.getStringSet("pgview_" + pkg, emptySet()) ?: emptySet()).isNotEmpty(), sp.getBoolean("hook_test", false))
@@ -59,7 +65,7 @@ object ModuleCore {
             if (page != null && !ticked("smart_apps") && !ticked("pgmod_apps")) PageHooks.install(PageDark.Cfg(page.to and 0xFFFFFF, 0xEBEBEB, true))
         }
 
-        fun fix(c: Int): Int { val o = Grey.fix(c, limit, keep, tint); if (o != c) Counters.greys.incrementAndGet(); return o }
+        fun fix(c: Int): Int { val o = Grey.fix(c, limit, keep, tint, soft); if (o != c) Counters.greys.incrementAndGet(); return o }
         val after = object : Hook() {
             override fun afterHookedMethod(param: HookParam) { (param.result as? Int)?.let { param.result = fix(it) } }
         }
@@ -85,7 +91,7 @@ object ModuleCore {
 /** Legacy LSPosed entry (xposed_init). Reads the settings with XSharedPreferences. */
 class XposedInit : IXposedHookLoadPackage {
     override fun handleLoadPackage(p: XC_LoadPackage.LoadPackageParam) {
-        if (p.packageName == "com.umutk.blackout") { ModuleCore.statusActive(p.classLoader); return }
+        if (p.packageName == "com.umutk.blackout") { ModuleCore.statusActive(p.classLoader, "legacy"); return }
         val sp = XSharedPreferences("com.umutk.blackout", "blackout")
         sp.reload()
         // the real XSharedPreferences implements SharedPreferences; the local compile-time stub does not, hence the cast
@@ -96,7 +102,7 @@ class XposedInit : IXposedHookLoadPackage {
 /** Modern libxposed entry (META-INF/xposed/java_init.list). Reads the settings from the remote preferences LSPosed keeps for BlackOut. */
 class ModernEntry : XposedModule() {
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
-        if (param.packageName == "com.umutk.blackout") { Hooks.modern = this; ModuleCore.statusActive(param.classLoader); return }
+        if (param.packageName == "com.umutk.blackout") { Hooks.modern = this; ModuleCore.statusActive(param.classLoader, "modern"); return }
         // no settings have reached this process: step aside, so the legacy entry (which has always worked here) does the job as before
         val remote = getRemotePreferences("blackout")
         if (remote.all.isEmpty()) return

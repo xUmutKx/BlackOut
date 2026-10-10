@@ -106,6 +106,24 @@ fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences, showMaster: Boolean
                 if (mode == Privilege.Mode.None) Text("Needs root or Shizuku first (Settings > Access).", color = Color(0xFFFFB74D), fontSize = 13.sp)
                 msg?.let { Text(it, fontSize = 13.sp, color = Color(0xFFF44336), modifier = Modifier.padding(top = 4.dp)) }
                 Text("Covers the whole screen until the phone restarts.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 6.dp))
+                // manual only: Android's own force-dark for every app that does not opt out (React Native views included); resets on reboot
+                var fdOn by remember { mutableStateOf(false) }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                    Text("Android force dark (manual, all apps)", modifier = Modifier.weight(1f))
+                    Switch(fdOn, { v ->
+                        fdOn = v
+                        scope.launch { withContext(Dispatchers.IO) { Privilege.run("setprop debug.hwui.force_dark ${if (v) "true" else "false"}") } }
+                    }, enabled = mode != Privilege.Mode.None)
+                }
+                // manual only: the whole-screen invert, switched by you and nothing else
+                var invOn by remember { mutableStateOf(false) }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Invert the whole screen (manual)", modifier = Modifier.weight(1f))
+                    Switch(invOn, { v ->
+                        invOn = v
+                        scope.launch { withContext(Dispatchers.IO) { Privilege.run("settings put secure accessibility_display_inversion_enabled ${if (v) 1 else 0}") } }
+                    }, enabled = mode != Privilege.Mode.None)
+                }
             }
         }
     }

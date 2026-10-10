@@ -108,10 +108,10 @@ fun AllColorsCard(app: AppRow, mode: Privilege.Mode) {
                 if (named.isNotEmpty()) {
                     val r = withContext(Dispatchers.IO) { Overlays.apply(app.pkg, named.map { it.name to col }) }
                     ok = r.ok; text = r.message
-                    if (r.ok) named.forEach { Overlays.saveOverride(sp, app.pkg, it.name, col) }
+                    if (r.ok) { named.forEach { Overlays.saveOverride(sp, app.pkg, it.name, col) }; Overlays.forceStop(app.pkg) }
                 }
                 made = Overlays.overrides(sp, app.pkg)
-                msg = if (ok) "$label (${cands.size}). Reopen the app." else text
+                msg = if (ok) "$label (${cands.size}). Reopen the app. If nothing changes, the app does not use these colors; see \"How this app draws\" above." else text
                 busy = false
             }
         }
@@ -128,11 +128,13 @@ fun AllColorsCard(app: AppRow, mode: Privilege.Mode) {
         if (open) all?.sortedByDescending { isBg(it.name) }?.filter { (query.isBlank() || it.name.contains(query, true)) && (!onlyDark || lumOf(it.color) < .5f) }?.let { list -> list.take(if (showAll) list.size else 8) to list.size }?.let { (rows, total) ->
           rows.forEach { c ->
             val now = made[c.name] ?: c.color
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(enabled = mode != Privilege.Mode.None) { pickedFrom = "%06X".format(c.color and 0xFFFFFF) }.padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(enabled = mode != Privilege.Mode.None) { pickedFrom = "%06X".format(c.color and 0xFFFFFF); editing = c }.padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
                 Sw(c.color); Text("→", Modifier.padding(horizontal = 6.dp)); Sw(now)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(c.name, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // the color code, so you can see what it is and type a new one
+                    Text("#%06X → #%06X".format(c.color and 0xFFFFFF, now and 0xFFFFFF), fontSize = 11.sp, color = dim, fontFamily = FontFamily.Monospace)
                 }
             }
           }
@@ -172,9 +174,9 @@ private fun ColorEditor(app: AppRow, c: Candidate, sp: SharedPreferences, now: I
                 busy = true
                 scope.launch {
                     val r = withContext(Dispatchers.IO) { Overlays.apply(app.pkg, listOf(c.name to col)) }
-                    if (r.ok) Overlays.saveOverride(sp, app.pkg, c.name, col)
+                    if (r.ok) { Overlays.saveOverride(sp, app.pkg, c.name, col); Overlays.forceStop(app.pkg) }   // restart so the new color is read
                     busy = false
-                    android.widget.Toast.makeText(ctx, if (r.ok) "Done. Reopen the app." else r.message, android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(ctx, if (r.ok) "Overlay on for ${c.name}. The app restarts; if the screen does not change, this app does not use that color: try Dark pages." else r.message, android.widget.Toast.LENGTH_LONG).show()
                     onDone(if (r.ok) col else null, r.message)
                 }
             }, enabled = !busy && hex.length == 6) { Text("Apply") }
@@ -201,7 +203,7 @@ private fun SwapRows(sp: SharedPreferences, pkg: String, from: String, onFrom: (
         listOf(0xFF000000.toInt(), 0xFF121212.toInt(), 0xFF0B1020.toInt(), 0xFFFFFFFF.toInt(), 0xFFF8FAFC.toInt()).forEach { col ->
             Box(Modifier.size(30.dp).clip(CircleShape).background(Color(col)).border(1.dp, Color(0x55FFFFFF), CircleShape).clickable {
                 // a tap on a color turns the picked source into it, at once
-                if (from.length == 6) { RecolorRules.add(sp, pkg, hex(from), col, 0); onMsg("#$from → #%06X. Reopen the app.".format(col and 0xFFFFFF)) } else onMsg("Pick a color from the list first.")
+                if (from.length == 6) { RecolorRules.add(sp, pkg, hex(from), col, 6); onMsg("#$from → #%06X. Reopen the app.".format(col and 0xFFFFFF)) } else onMsg("Pick a color from the list first.")
             })
         }
     }

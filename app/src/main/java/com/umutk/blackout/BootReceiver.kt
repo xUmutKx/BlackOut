@@ -9,8 +9,8 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         if (i.action != Intent.ACTION_BOOT_COMPLETED) return
         val sp = c.getSharedPreferences("blackout", Context.MODE_PRIVATE)
-        val pages = sp.getBoolean("pg_on", false); val fd = sp.getBoolean("fdsys_on", false)
-        if (!pages && !fd) return
+        val pages = sp.getBoolean("pg_on", false); val fd = sp.getBoolean("fdsys_on", false); val dark = sp.getBoolean("sysdark_on", false)
+        if (!pages && !fd && !dark) return
         val pending = goAsync()
         Thread {
             try {
@@ -18,6 +18,7 @@ class BootReceiver : BroadcastReceiver() {
                 if (Privilege.detect(sp.getString("prefer", "auto") ?: "auto") != Privilege.Mode.None) {
                     if (pages) PageDark.apply(PageDark.fromPrefs(sp))
                     if (fd) Privilege.run("setprop debug.hwui.force_dark true")
+                    if (dark) Privilege.run("cmd uimode night yes")
                 }
             } finally { pending.finish() }
         }.start()

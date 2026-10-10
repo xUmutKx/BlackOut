@@ -66,6 +66,8 @@ fun RecolorCard(pkg: String, sp: SharedPreferences) {
                 Text("Colors (${rules.size})", fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 Icon(if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, null)
             }
+            // the dropper stays visible even when the list is collapsed
+            Button({ openBar(ctx, pkg) }) { Icon(Icons.Filled.Colorize, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Pick on screen") }
             if (open) {
             Text("One color turns into another inside this app.", fontSize = 13.sp, color = dim)
             rules.forEach { r ->
@@ -93,7 +95,6 @@ fun RecolorCard(pkg: String, sp: SharedPreferences) {
                 Text("#%06X".format(to and 0xFFFFFF), fontSize = 13.sp, color = dim, fontFamily = FontFamily.Monospace)
             }
             Button({ RecolorRules.add(sp, pkg, 0xFFFFFF, to, 6); rules = RecolorRules.get(sp, pkg) }, Modifier.fillMaxWidth()) { Text("Save white → this color") }
-            Button({ openBar(ctx, pkg) }) { Icon(Icons.Filled.Colorize, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Pick on screen") }
             }
         }
     }

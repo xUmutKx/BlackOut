@@ -32,7 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val AccentC = Color(0xFF8C9EFF)
+private val AccentC: Color get() = Color(AppTheme.accent)
 
 /** Settings > About: a glowing moon with twinkling stars, who made it, version and device, the GitHub link and the privacy promise. */
 @Composable

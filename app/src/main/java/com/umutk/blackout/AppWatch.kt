@@ -52,11 +52,20 @@ class AppWatch : AccessibilityService() {
     private var picker: ColorPicker? = null
     private lateinit var sp: SharedPreferences
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key != null && (key.startsWith("ly_") || key.startsWith("crush") || key.startsWith("pg_") || key == "pages_apps" || key == "inv_apps" || key == "editor_apps")) { if (key.startsWith("pg_") || key.startsWith("crush") || key == "inv_apps") shown = ""; applyLayer(); applyRoot() }
+        if (key != null && (key.startsWith("ly_") || key.startsWith("crush") || key.startsWith("pg_") || key == "pages_apps" || key == "inv_apps" || key == "editor_apps" || key == "auto_self")) { if (key.startsWith("pg_") || key.startsWith("crush") || key == "inv_apps" || key == "auto_self") shown = ""; applyLayer(); applyRoot() }
     }
 
     override fun onServiceConnected() {
         sp = getSharedPreferences("blackout", Context.MODE_PRIVATE)
+        // Android's own invert switch must start OFF: if a previous session left it on, turn it off now (invert is only used per app, on request)
+        io.execute { try {
+            if (Privilege.mode != Privilege.Mode.None) {
+                Privilege.run("settings put secure accessibility_display_inversion_enabled 0")
+                // the screen filter survives an app restart: clear it unless the user has Dark pages or an app list on
+                val wanted = sp.getBoolean("pg_on", false) || !(sp.getStringSet("pages_apps", emptySet()).isNullOrEmpty())
+                if (!wanted) PageDark.clear()
+            }
+        } catch (_: Exception) { } }
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         sp.registerOnSharedPreferenceChangeListener(listener)
         picker = ColorPicker(this, wm!!, sp, ui) { current }
@@ -152,13 +161,35 @@ class AppWatch : AccessibilityService() {
     }
     private val redo = Runnable { if (shown.isNotEmpty()) { shown = ""; applyRoot() } }
 
+    /** Which apps draw their own screen, remembered per package; the APK scan runs once, off the main thread, and the filter is re-evaluated when it is done. */
+    private val selfDrawn = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    private fun isSelfDrawn(pkg: String): Boolean {
+        if (pkg.isEmpty() || pkg == packageName) return false
+        // never for system apps or the home screen: they must keep their own look
+        try {
+            val ai = packageManager.getApplicationInfo(pkg, 0)
+            if (ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0) return false
+            val home = packageManager.resolveActivity(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME), 0)?.activityInfo?.packageName
+            if (pkg == home) return false
+        } catch (_: Exception) { return false }
+        selfDrawn[pkg]?.let { return it }
+        selfDrawn[pkg] = false   // until the scan says otherwise
+        io.execute {
+            val t = AppKindScan.detect(this, pkg)?.title.orEmpty()
+            val self = t.startsWith("Flutter") || t.startsWith("Unity") || t.startsWith("Game") || t.startsWith("Web") || t.startsWith("React Native")
+            if (self) { selfDrawn[pkg] = true; ui.post { shown = ""; applyRoot() } }
+        }
+        return false
+    }
+
     private fun applyRoot() {
         if (!::sp.isInitialized) return
         val crush = false   // the screen-wide black level was removed: it also lifted the quick panel and other screens
-        val pages = sp.getBoolean("pg_on", false) || current in (sp.getStringSet("pages_apps", emptySet()) ?: emptySet())
-        val invert = current in (sp.getStringSet("inv_apps", emptySet()) ?: emptySet())
+        // nothing here is automatic any more: the screen filter is only on when the user switches Dark pages on, for the whole phone
+        val pages = sp.getBoolean("pg_on", false)
+        val invert = false
         // "inside a note": the whole-screen page colors only on the app's other screens, not on its main list (where the LSPosed hooks already work)
-        val editor = current in (sp.getStringSet("editor_apps", emptySet()) ?: emptySet()) && currentCls.isNotEmpty() && currentCls != mainScreen(current)
+        val editor = false
         val want = if (invert) "invert" else if (crush) "crush" else if (pages || editor) "pages" else ""
 
         if (want == shown) return

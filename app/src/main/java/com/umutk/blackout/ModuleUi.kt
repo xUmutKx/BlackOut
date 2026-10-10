@@ -168,7 +168,7 @@ fun PagesModCard(pkg: String, mode: Privilege.Mode) {
 
 /** What the grey limit means, in colors: a strip of greys (top: what an app asks for, bottom: what it gets) and a small dark app before and after. */
 @Composable
-fun GreyPreview(limit: Float, keep: Float, tint: Int = 0) {
+fun GreyPreview(limit: Float, keep: Float, tint: Int = 0, soft: Boolean = false) {
     val l = limit.toInt(); val k = keep / 100f
     var look by remember { mutableStateOf(0) }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
@@ -176,7 +176,7 @@ fun GreyPreview(limit: Float, keep: Float, tint: Int = 0) {
         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))) {
             for (v in 16..112 step 8) {
                 val c = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
-                val out = Grey.fix(c, l, k, tint)
+                val out = Grey.fix(c, l, k, tint, soft)
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(Modifier.fillMaxWidth().height(24.dp).background(Color(c)))
                     Box(Modifier.fillMaxWidth().height(24.dp).background(Color(out)))
@@ -190,7 +190,7 @@ fun GreyPreview(limit: Float, keep: Float, tint: Int = 0) {
         }
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             MockDarkApp(null, Modifier.weight(1f), MockLooks[look])
-            MockDarkApp({ Grey.fix(it, l, k, tint) }, Modifier.weight(1f), MockLooks[look])
+            MockDarkApp({ Grey.fix(it, l, k, tint, soft) }, Modifier.weight(1f), MockLooks[look])
         }
         Text("Pick an app look. Left: before. Right: the same app with this setting.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
     }
@@ -285,6 +285,23 @@ fun LayerPreview(alpha: Float, rgb: Int) {
 val TintChoices = listOf("Black" to 0x000000, "Navy" to 0x050A18, "Blue" to 0x08142C, "Teal" to 0x051616, "Forest" to 0x07120A, "Plum" to 0x120818, "Warm" to 0x140E08, "Red" to 0x1A0808)
 
 /** Side color for the "black": instead of #000000 the surfaces become a very dark blue, green, plum... (tint is added after the brightness is scaled). */
+/** The app's accent colour (buttons, highlights, the tab bar). */
+val AccentChoices = listOf("Periwinkle" to 0x8C9EFF, "Teal" to 0x4DD0C1, "Mint" to 0x69F0AE, "Amber" to 0xFFB74D, "Rose" to 0xF48FB1, "Sky" to 0x64B5F6, "Ivory" to 0xE0E0E0)
+
+@Composable
+fun AccentPicker(accent: Int, onPick: (Int) -> Unit) {
+    Text("Accent colour", fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+    Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        AccentChoices.forEach { (n, c) ->
+            val sel = (0xFF000000.toInt() or c) == accent
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onPick(0xFF000000.toInt() or c) }) {
+                Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF000000.toInt() or c)).border(if (sel) 2.dp else 1.dp, if (sel) Color.White else Color(0x66FFFFFF), CircleShape))
+                Text(n, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
 @Composable
 fun TintPicker(tint: Int, onPick: (Int) -> Unit) {
     Text("Color of the dark", fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
@@ -295,6 +312,35 @@ fun TintPicker(tint: Int, onPick: (Int) -> Unit) {
                 Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF000000.toInt() or c)).border(if (sel) 2.dp else 1.dp, if (sel) Color(0xFF8C9EFF) else Color(0x66FFFFFF), CircleShape))
                 Text(n, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+/** Force dark page, root only: the system's own dark theme (Settings > Display > Dark theme). Off by default; the switch is applied at boot too. */
+@Composable
+fun SystemDarkThemeCard(mode: Privilege.Mode, sp: android.content.SharedPreferences) {
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf(sp.getBoolean("sysdark_on", false)) }
+    var msg by remember { mutableStateOf<String?>(null) }
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (on) "System dark theme is ON" else "System dark theme is off", fontWeight = FontWeight.Bold)
+                    Text("Same as Settings > Display > Dark theme. Needs root. Apps that follow the system theme switch too.", fontSize = 13.sp, color = dim)
+                }
+                Switch(on, { v ->
+                    on = v; sp.edit().putBoolean("sysdark_on", v).apply()
+                    scope.launch {
+                        // cmd uimode first; the settings key is the fallback for phones where that command is missing (value 2 = yes, 1 = no: verify on device)
+                        val o = withContext(Dispatchers.IO) { Privilege.run("cmd uimode night ${if (v) "yes" else "no"} 2>/dev/null || settings put secure ui_night_mode ${if (v) 2 else 1}; cmd uimode night 2>/dev/null") }
+                        msg = if (o.text.contains(if (v) "yes" else "no", ignoreCase = true)) "Done." else "The phone did not take it: ${o.text.take(120)}"
+                    }
+                }, enabled = mode != Privilege.Mode.None)
+            }
+            if (mode == Privilege.Mode.None) Text("Needs root first (Settings > Root access).", fontSize = 13.sp, color = Color(0xFFFFB74D), modifier = Modifier.padding(top = 4.dp))
+            msg?.let { Text(it, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
         }
     }
 }

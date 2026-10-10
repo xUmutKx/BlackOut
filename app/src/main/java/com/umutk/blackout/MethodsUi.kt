@@ -173,11 +173,11 @@ fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(if (active) Color(0xFF4CAF50) else Color(0xFFFFB74D)))
                     Spacer(Modifier.width(10.dp))
-                    Text(if (active) "Module is active in LSPosed" else "Module not detected yet", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(if (active) "Module is active in LSPosed (${Status.api()} API)" else "Module not detected yet", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     TextButton({ active = Status.isActive() }) { Text("Refresh") }
                 }
                 Text("Dark greys of the ticked apps go pure black.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
-                Text("LSPosed > BlackOut: switch it on, tick the apps, restart them.", fontSize = 13.sp, maxLines = 2, modifier = Modifier.padding(top = 4.dp))
+                Text("LSPosed > BlackOut: switch it on, tick BlackOut and the apps, restart them.", fontSize = 13.sp, maxLines = 2, modifier = Modifier.padding(top = 4.dp))
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button({
                         val i = ctx.packageManager.getLaunchIntentForPackage("org.lsposed.manager")
@@ -198,8 +198,16 @@ fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
                 GreySlider(limit, { limit = it }) { sp.edit().putFloat("limit", limit).apply() }
                 Text(if (keep < 1f) "Result: pure black" else "Result: ${keep.toInt()}% of the brightness stays", fontSize = 13.sp)
                 Slider(keep, { keep = it }, valueRange = 0f..40f, onValueChangeFinished = { sp.edit().putFloat("keep", keep).apply() })
-                TintPicker(tint) { tint = it; sp.edit().putInt("tint", it).apply() }
-                GreyPreview(limit, keep, tint)
+                TintPicker(tint) { tint = it; sp.edit().putInt("tint", it).apply(); AppTheme.base = it }
+                var soft by remember { mutableStateOf(sp.getBoolean("amo_soft", false)) }
+                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Soft whites", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        Text("Pure white becomes light grey. Less glare on AMOLED.", fontSize = 13.sp, color = dim)
+                    }
+                    Switch(soft, { soft = it; sp.edit().putBoolean("amo_soft", it).apply() })
+                }
+                GreyPreview(limit, keep, tint, soft)
                 var web by remember { mutableStateOf(sp.getBoolean("web_black", true)) }
                 Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {

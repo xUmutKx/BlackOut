@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.asImageBitmap
@@ -41,11 +42,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Accent = Color(0xFF8C9EFF)
-private val Scheme = darkColorScheme(
-    primary = Accent, onPrimary = Color.Black, background = Color.Black, surface = Color.Black,
-    surfaceContainer = Color(0xFF0E0E10), surfaceContainerHigh = Color(0xFF16161A), onSurface = Color(0xFFECECF1), onSurfaceVariant = Color(0xFF9A9AA6),
-)
+/** The app's own look, from the Colors page: the accent and the dark it sits on. Changing them recomposes the whole app at once. */
+object AppTheme {
+    var accent by mutableIntStateOf(0xFF8C9EFF.toInt())
+    var base by mutableIntStateOf(0)   // "Color of the dark" from the Colors page (0 = black)
+}
+private val Accent: Color get() = Color(AppTheme.accent)
+private fun appScheme(): ColorScheme {
+    val b = Color(0xFF000000.toInt() or AppTheme.base)
+    return darkColorScheme(
+        primary = Accent, onPrimary = Color.Black, background = b, surface = b,
+        surfaceContainer = lerp(b, Color.White, .05f), surfaceContainerHigh = lerp(b, Color.White, .09f), onSurface = Color(0xFFECECF1), onSurfaceVariant = Color(0xFF9A9AA6),
+    )
+}
 
 class AppRow(val pkg: String, val label: String, val sourceDir: String, val launch: Boolean = true)
 
@@ -53,7 +62,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { MaterialTheme(colorScheme = Scheme) { Surface(Modifier.fillMaxSize(), color = Color.Black) { Root() } } }
+        val p = getSharedPreferences("blackout", MODE_PRIVATE)
+        AppTheme.accent = p.getInt("accent", AppTheme.accent); AppTheme.base = p.getInt("tint", 0)
+        setContent { MaterialTheme(colorScheme = appScheme()) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { Root() } } }
     }
 }
 
@@ -139,7 +150,7 @@ private fun Root() {
             }
             "sysfd" -> {
                 TopBar("Force dark") { page = "home" }
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { SystemForceDarkCard(mode, prefs) }
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { SystemForceDarkCard(mode, prefs); SystemDarkThemeCard(mode, prefs) }
             }
             "global" -> {
                 TopBar("All Material You apps") { page = "home" }
@@ -182,7 +193,8 @@ private fun Root() {
                                 GreySlider(limit, { limit = it }) { prefs.edit().putFloat("limit", limit).apply() }
                                 Text(if (keep < 1f) "Result: pure black (#000000)" else "Result: ${keep.toInt()}% of the original brightness stays", fontSize = 14.sp)
                                 Slider(keep, { keep = it }, valueRange = 0f..40f, onValueChangeFinished = { prefs.edit().putFloat("keep", keep).apply() })
-                                TintPicker(tint) { tint = it; prefs.edit().putInt("tint", it).apply() }
+                                TintPicker(tint) { tint = it; prefs.edit().putInt("tint", it).apply(); AppTheme.base = it }
+                                AccentPicker(AppTheme.accent) { AppTheme.accent = it; prefs.edit().putInt("accent", it).apply() }
                                 GreyPreview(limit, keep, tint)
                                 Text("Higher limit = also darkens lighter greys (cards, sheets). Re-scan an app after changing it.", color = dim, fontSize = 13.sp)
                             }
@@ -217,7 +229,6 @@ private fun Root() {
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text("BlackOut", fontSize = 30.sp, fontWeight = FontWeight.Black, color = Accent)
-                        Text("Grey surfaces → AMOLED black", color = dim, fontSize = 14.sp)
                     }
                 }
                 Row(Modifier.clip(RoundedCornerShape(20.dp)).clickable { page = "settings"; cat = "access" }.background(MaterialTheme.colorScheme.surfaceContainer).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -230,6 +241,10 @@ private fun Root() {
                 SetRow(Icons.Filled.Extension, "LSPosed module", "Black apps", big = true, badge = if (Status.isActive()) "ON" else null) { page = "module" }
                 SetRow(Icons.Filled.InvertColors, "Force dark", "Light apps", big = true, badge = if (prefs.getBoolean("fdsys_on", false)) "ON" else "OFF") { page = "sysfd" }
                 SetRow(Icons.Filled.Apps, "Apps", "${apps.count { it.launch }}", big = true) { page = "apps" }
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(12.dp)) {
+                    Text("LSPosed: turn BlackOut on, tick BlackOut in each app's scope, then restart that app.", fontSize = 13.sp)
+                    Text("LSPosed'te BlackOut'u açın, uygulamanın kapsamında BlackOut'u işaretleyin, sonra uygulamayı yeniden başlatın.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
+                }
                 PrivacyNote()
             }
         }
@@ -320,7 +335,9 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
     var busy by remember { mutableStateOf(false) }
     var active by remember { mutableIntStateOf(-1) }
     var progress by remember { mutableStateOf("") }
-    val off = remember(app.pkg) { mutableStateListOf<String>() }                // names the user switched off
+    val off = remember(app.pkg) { mutableStateListOf<String>() }
+    // the long colour list is collapsed by default; only the header shows until it is opened
+    var listOpen by remember(app.pkg) { mutableStateOf(false) }                // names the user switched off
     LaunchedEffect(app.pkg) { if (result == null) onScan() }
     LaunchedEffect(app.pkg, mode) { if (mode != Privilege.Mode.None) active = withContext(Dispatchers.IO) { Overlays.activeCount(app.pkg) } }
     LaunchedEffect(result) { result?.candidates?.forEach { if (KEEP.containsMatchIn(it.name) && it.name !in off) off.add(it.name) } }
@@ -354,7 +371,11 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                         scope.launch {
                             val r = withContext(Dispatchers.IO) { Overlays.apply(app.pkg, chosen.map { it.name to Overlays.scaled(it.color, keep, tintCtx.getSharedPreferences("blackout", android.content.Context.MODE_PRIVATE).getInt("tint", 0)) }) { d, n -> progress = "Applying $d / $n" } }
                             msg = r.message; busy = false; progress = ""
-                            if (r.ok) { active = withContext(Dispatchers.IO) { Overlays.activeCount(app.pkg) } }
+                            if (r.ok) {
+                                active = withContext(Dispatchers.IO) { Overlays.activeCount(app.pkg) }
+                                // with root or Shizuku the app is restarted here, so the new colors apply without a manual force stop
+                                if (mode != Privilege.Mode.None) { withContext(Dispatchers.IO) { Overlays.forceStop(app.pkg) }; msg = "${r.message} The app was restarted." }
+                            }
                         }
                     }, enabled = mode != Privilege.Mode.None && chosen.isNotEmpty() && !busy && result?.namesStripped != true) { Text("Apply (${chosen.size})") }
                     OutlinedButton({
@@ -375,7 +396,10 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                 }
             }
             if (result == null && error == null) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text("Reading the app's colors…") } }
-            items(result?.candidates.orEmpty(), key = { it.id }) { c ->
+            item {
+                TextButton({ listOpen = !listOpen }) { Text(if (listOpen) "Hide colors" else "Show colors (${result?.candidates?.size ?: 0})", fontSize = 13.sp) }
+            }
+            if (listOpen) items(result?.candidates.orEmpty(), key = { it.id }) { c ->
                 val on = c.name !in off
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { if (on) off.add(c.name) else off.remove(c.name) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(on, { if (on) off.add(c.name) else off.remove(c.name) })
@@ -386,6 +410,7 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                     }
                 }
             }
+            item { AppKindCard(app.pkg) }
             item { SetupCards(app) }
             item { AllColorsCard(app, mode) }
         }

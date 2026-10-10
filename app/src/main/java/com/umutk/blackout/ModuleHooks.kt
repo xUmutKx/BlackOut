@@ -20,10 +20,12 @@ private fun hook(f: () -> Unit) { try { f() } catch (t: Throwable) { Hooks.log("
 
 /** The module's color rule, shared with the preview in the app: a dark neutral grey no brighter than [limit] becomes black ([keep] of it stays). */
 object Grey {
-    fun fix(c: Int, limit: Int, keep: Float, tint: Int = 0): Int {
+    fun fix(c: Int, limit: Int, keep: Float, tint: Int = 0, soft: Boolean = false): Int {
         if (((c ushr 24) and 255) != 255) return c
         val r = (c shr 16) and 255; val g = (c shr 8) and 255; val b = c and 255
         val mx = maxOf(r, g, b)
+        // Soft whites: near-white neutral colours become light grey, which cuts glare and halation on AMOLED
+        if (soft && minOf(r, g, b) >= 236 && mx - minOf(r, g, b) <= 24) return 0xFFE6E6E6.toInt()
         if (mx == 0 || mx > limit || mx - minOf(r, g, b) > 24) return c
         return Overlays.scaled(c, keep, tint)
     }
@@ -41,8 +43,9 @@ object ForceDarkHooks {
                 val a = param.args
                 if (a.isEmpty()) return
                 when (val v = a[0]) {
-                    is Boolean -> { if (!v && count) Counters.forced.incrementAndGet(); a[0] = true }
-                    is Int -> if (v == 0) { a[0] = 1; if (count) Counters.forced.incrementAndGet() }
+                    // counted on every call, not only when the framework asked for "off": a window that already has it on is still forced
+                    is Boolean -> { if (count) Counters.forced.incrementAndGet(); a[0] = true }
+                    is Int -> { if (count) Counters.forced.incrementAndGet(); if (v == 0) a[0] = 1 }
                 }
             }
         }
@@ -279,7 +282,7 @@ object Recolor {
     /** "RRGGBB>RRGGBB>percent;..." as stored by the app. */
     fun parse(s: String?): List<Rule> = s.orEmpty().split(';').mapNotNull { p ->
         val a = p.split('>')
-        if (a.size < 3) null else try { Rule(a[0].toLong(16).toInt() or -0x1000000, a[1].toLong(16).toInt() or -0x1000000, a[2].toInt().coerceIn(0, 60) * 255 / 100) } catch (_: Throwable) { null }
+        if (a.size < 3) null else try { Rule(a[0].toLong(16).toInt() or -0x1000000, a[1].toLong(16).toInt() or -0x1000000, a[2].toInt().coerceIn(3, 60) * 255 / 100) } catch (_: Throwable) { null }
     }
 
     fun lum(c: Int) = (.299f * ((c shr 16) and 255) + .587f * ((c shr 8) and 255) + .114f * (c and 255)) / 255f

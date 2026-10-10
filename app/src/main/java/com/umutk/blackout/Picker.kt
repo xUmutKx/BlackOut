@@ -53,7 +53,8 @@ class ColorPicker(private val svc: AccessibilityService, private val wm: WindowM
     private var swatch: View? = null
     private var hex: TextView? = null
     private var tolText: TextView? = null
-    private var promptBox: View? = null     // "make this color X?" after a dropper pick: Yes saves it at once
+    private var promptBox: View? = null     // "make this color X?" after a dropper pick: Confirm saves it, Cancel reverts the preview
+    private var before = 0                  // the preview colour before the last pick, restored by Cancel
     private var appRow: LinearLayout? = null  // the app's own colours, read from its resources: tap one, no screen reading needed
     private var promptText: TextView? = null
     private val dp = svc.resources.displayMetrics.density
@@ -115,11 +116,14 @@ class ColorPicker(private val svc: AccessibilityService, private val wm: WindowM
         promptText = TextView(svc).apply { setTextColor(Color.WHITE); textSize = 13f; typeface = android.graphics.Typeface.MONOSPACE }
         prompt.addView(promptText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         prompt.addView(TextView(svc).apply {
-            text = "Yes"; setTextColor(0xFF000000.toInt()); textSize = 14f; setPadding(px(12), px(4), px(12), px(4))
+            text = "Confirm"; setTextColor(0xFF000000.toInt()); textSize = 14f; setPadding(px(12), px(4), px(12), px(4))
             background = GradientDrawable().apply { cornerRadius = px(16).toFloat(); setColor(0xFF8C9EFF.toInt()) }
             setOnClickListener { saveRule() }
         })
-        prompt.addView(TextView(svc).apply { text = "No"; setTextColor(Color.WHITE); textSize = 14f; setPadding(px(12), px(4), px(12), px(4)); setOnClickListener { promptBox?.visibility = View.GONE } })
+        prompt.addView(TextView(svc).apply {
+            text = "Cancel"; setTextColor(Color.WHITE); textSize = 14f; setPadding(px(12), px(4), px(12), px(4))
+            setOnClickListener { picked = before; paint(); promptBox?.visibility = View.GONE }
+        })
         box.addView(prompt)
         promptBox = prompt
         // the app's own colours (its resources, whites included): tap one to change it. Works for any app, whatever its names are.
@@ -132,7 +136,7 @@ class ColorPicker(private val svc: AccessibilityService, private val wm: WindowM
         val row = box
         val lp = WindowManager.LayoutParams(px(250), WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; y = px(88) }
-        try { wm.addView(row, lp); bar = row } catch (_: Throwable) { return }
+        try { wm.addView(row, lp); bar = row } catch (t: Throwable) { Toast.makeText(svc, "Could not show the colour bar: ${t.javaClass.simpleName}", Toast.LENGTH_LONG).show(); return }
 
         val size = px(72)
         val r = RingView(svc)
@@ -148,8 +152,7 @@ class ColorPicker(private val svc: AccessibilityService, private val wm: WindowM
             }
             true
         }
-        try { wm.addView(r, rp); ring = r; ringLp = rp } catch (_: Throwable) { }
-        ui.postDelayed({ sample() }, 400)
+        try { wm.addView(r, rp); ring = r; ringLp = rp } catch (_: Throwable) { Toast.makeText(svc, "Could not show the colour ring", Toast.LENGTH_LONG).show() }
     }
 
     /** Reads the app's colours from its APK on a background thread, then lists them as dots in the bar. */
@@ -167,14 +170,21 @@ class ColorPicker(private val svc: AccessibilityService, private val wm: WindowM
                 // whites and light colours first: they are the ones that usually need to change
                 colours.sortedByDescending { lumOf(it.color) }.take(80).forEach { c ->
                     row.addView(dot(c.color, 26).apply {
-                        setOnClickListener { picked = c.color or -0x1000000; tol = 6; paint(); showPrompt() }
+                        setOnClickListener { pick(c.color or -0x1000000, 6) }
                     })
                 }
             }
         }.start()
     }
 
-    /** After a dropper pick: the bar asks whether this colour should change, and Yes saves it at once. */
+    /** A dropper pick is only a preview: swatch and hex change, and the prompt asks Confirm or Cancel before anything is saved. */
+    private fun pick(c: Int, t: Int) {
+        before = picked
+        picked = c; tol = t
+        paint(); showPrompt()
+    }
+
+    /** After a dropper pick: the bar asks whether this colour should change; Confirm saves it, Cancel reverts the preview. */
     private fun showPrompt() {
         if (picked == 0) return
         val to2 = if (to == 0xFF000000.toInt()) "black" else "#%06X".format(to and 0xFFFFFF)
@@ -210,6 +220,7 @@ class ColorPicker(private val svc: AccessibilityService, private val wm: WindowM
                         val bmp = try { Bitmap.wrapHardwareBuffer(hb, res.colorSpace)?.copy(Bitmap.Config.ARGB_8888, false) } catch (_: Throwable) { null }
                         try { hb.close() } catch (_: Throwable) { }
                         val dm = svc.resources.displayMetrics
+                        var c = 0; var t = 12
                         if (bmp != null) {
                             val x = (cx * bmp.width / dm.widthPixels.toFloat()).toInt().coerceIn(0, bmp.width - 1)
                             val y = (cy * bmp.height / dm.heightPixels.toFloat()).toInt().coerceIn(0, bmp.height - 1)
@@ -217,14 +228,15 @@ class ColorPicker(private val svc: AccessibilityService, private val wm: WindowM
                             var sr = 0; var sg = 0; var sb = 0; var n = 0
                             for (dy in -2..2) for (dx in -2..2) {
                                 val px = (x + dx).coerceIn(0, bmp.width - 1); val py = (y + dy).coerceIn(0, bmp.height - 1)
-                                val c = bmp.getPixel(px, py); sr += (c shr 16) and 255; sg += (c shr 8) and 255; sb += c and 255; n++
+                                val p = bmp.getPixel(px, py); sr += (p shr 16) and 255; sg += (p shr 8) and 255; sb += p and 255; n++
                             }
-                            picked = (0xFF shl 24) or ((sr / n) shl 16) or ((sg / n) shl 8) or (sb / n)
+                            c = (0xFF shl 24) or ((sr / n) shl 16) or ((sg / n) shl 8) or (sb / n)
                             // a light colour (white, near-white): a wider tolerance, so a shade off still matches the app's own white
-                            tol = if (lumOf(picked) > .85f) 20 else 12
+                            t = if (lumOf(c) > .85f) 20 else 12
                             bmp.recycle()
                         }
-                        ui.post { r.visibility = View.VISIBLE; paint(); showPrompt() }
+                        // shortcut: a null bitmap (the screenshot could not be converted) is reported, not silently ignored
+                        ui.post { r.visibility = View.VISIBLE; if (c != 0) pick(c, t) else Toast.makeText(svc, "Could not read that colour, try again", Toast.LENGTH_SHORT).show() }
                     }
                     override fun onFailure(code: Int) { ui.post { r.visibility = View.VISIBLE; Toast.makeText(svc, "Could not read the screen (code $code)", Toast.LENGTH_SHORT).show() } }
                 })
