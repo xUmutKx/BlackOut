@@ -7,7 +7,7 @@ Android's dark mode is dark grey (around `#121212`), not black. On an OLED panel
 
 ## Screenshots
 
-| Home | An app's page | Google, dark | Open from (file picker) |
+| Home | Google Play Store | Google, dark | Open from (file picker) |
 |---|---|---|---|
 | ![Home](docs/screenshots/home.png) | ![App page](docs/screenshots/app-detail.png) | ![Google, dark](docs/screenshots/google-dark.png) | ![File picker](docs/screenshots/files-picker.png) |
 
