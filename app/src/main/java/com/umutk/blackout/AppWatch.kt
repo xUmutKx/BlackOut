@@ -2,6 +2,7 @@ package com.umutk.blackout
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Canvas
 import android.graphics.Color
@@ -18,7 +19,7 @@ import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.Executors
 
-/** The dark layer: one flat colour with holes cut where text and images are, so those keep their full brightness. */
+/** The dark layer: one flat color with holes cut where text and images are, so those keep their full brightness. */
 private class LayerView(c: Context) : View(c) {
     var dim = 0
     var holes: List<Rect> = emptyList()
@@ -35,7 +36,7 @@ private class LayerView(c: Context) : View(c) {
 
 /**
  * Accessibility service with two jobs:
- *  1. Top layer: a dark, see-through colour layer over everything (all apps, or only the chosen ones), with holes over text and images. Needs no root.
+ *  1. Top layer: a dark, see-through color layer over everything (all apps, or only the chosen ones), with holes over text and images. Needs no root.
  *     It only looks at where text and images are (bounds and class names), never at what they say; nothing is stored or sent.
  *  2. With root: raises the screen's black level, or applies Dark pages, while the chosen apps are open.
  */
@@ -51,7 +52,6 @@ class AppWatch : AccessibilityService() {
     private var picker: ColorPicker? = null
     private lateinit var sp: SharedPreferences
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "pick_go") { val t = sp.getString("pick_go", "").orEmpty(); if (t.isNotEmpty()) { sp.edit().putString("pick_go", "").apply(); ui.post { picker?.show(t) } }; return@OnSharedPreferenceChangeListener }
         if (key != null && (key.startsWith("ly_") || key.startsWith("crush") || key.startsWith("pg_") || key == "pages_apps" || key == "inv_apps" || key == "editor_apps")) { if (key.startsWith("pg_") || key.startsWith("crush") || key == "inv_apps") shown = ""; applyLayer(); applyRoot() }
     }
 
@@ -60,8 +60,14 @@ class AppWatch : AccessibilityService() {
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         sp.registerOnSharedPreferenceChangeListener(listener)
         picker = ColorPicker(this, wm!!, sp, ui) { current }
+        live = this
         applyLayer()
     }
+
+    override fun onUnbind(intent: Intent?): Boolean { if (live === this) live = null; return super.onUnbind(intent) }
+
+    /** The Colors screen calls this: only the running service can draw the bar and read the screen. */
+    fun openBar(target: String) { picker?.show(target) }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         if (e.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || e.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) { if (layer != null) scheduleHoles(); return }
@@ -138,7 +144,7 @@ class AppWatch : AccessibilityService() {
         lv.invalidate()
     }
 
-    /** Opening or closing the shade makes the system rewrite the screen colour matrix, which drops ours: put it back shortly after. */
+    /** Opening or closing the shade makes the system rewrite the screen color matrix, which drops ours: put it back shortly after. */
     private fun reassert() {
         if (shown.isEmpty()) return
         ui.removeCallbacks(redo)
@@ -148,10 +154,10 @@ class AppWatch : AccessibilityService() {
 
     private fun applyRoot() {
         if (!::sp.isInitialized) return
-        val crush = current in (sp.getStringSet("crush_apps", emptySet()) ?: emptySet())
+        val crush = false   // the screen-wide black level was removed: it also lifted the quick panel and other screens
         val pages = sp.getBoolean("pg_on", false) || current in (sp.getStringSet("pages_apps", emptySet()) ?: emptySet())
         val invert = current in (sp.getStringSet("inv_apps", emptySet()) ?: emptySet())
-        // "inside a note": the whole-screen page colours only on the app's other screens, not on its main list (where the LSPosed hooks already work)
+        // "inside a note": the whole-screen page colors only on the app's other screens, not on its main list (where the LSPosed hooks already work)
         val editor = current in (sp.getStringSet("editor_apps", emptySet()) ?: emptySet()) && currentCls.isNotEmpty() && currentCls != mainScreen(current)
         val want = if (invert) "invert" else if (crush) "crush" else if (pages || editor) "pages" else ""
 
@@ -163,7 +169,7 @@ class AppWatch : AccessibilityService() {
             when (want) {
                 "crush" -> PageDark.applyCrush(sp.getInt("crush_level", 30))
                 "pages" -> PageDark.apply(PageDark.fromPrefs(sp))
-                // Android's own colour inversion: works on every phone, whatever the app draws with, while this app is in front
+                // Android's own color inversion: works on every phone, whatever the app draws with, while this app is in front
                 "invert" -> { PageDark.clear(); Privilege.run("settings put secure accessibility_display_inversion_enabled 1") }
                 else -> PageDark.clear()
             }
@@ -187,6 +193,9 @@ class AppWatch : AccessibilityService() {
 
     companion object {
         const val ID = "com.umutk.blackout/com.umutk.blackout.AppWatch"
+
+        /** The connected service, or null when accessibility is off for BlackOut. */
+        @Volatile var live: AppWatch? = null
 
         /** Turns the watcher on through root (adds it to the enabled accessibility services). */
         fun enableWithPower(): Privilege.Out = Privilege.run(

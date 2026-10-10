@@ -1,7 +1,10 @@
 package com.umutk.blackout
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,12 +16,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Colorize
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -27,7 +33,19 @@ import androidx.compose.ui.unit.sp
 @Composable
 private fun Dot(c: Int, size: Int = 22) = Box(Modifier.size(size.dp).clip(CircleShape).background(Color(c or -0x1000000)).border(1.dp, Color(0x55FFFFFF), CircleShape))
 
-/** Colour rules of one app: what each picked colour turns into. New ones come from the floating colour bar or a hex code. */
+/** Shows the floating bar for [target] ("*" = the app in front). False when accessibility is off, so the user is told instead of nothing happening. */
+private fun openBar(ctx: Context, target: String): Boolean {
+    val svc = AppWatch.live
+    if (svc == null) {
+        Toast.makeText(ctx, "Turn on BlackOut in Accessibility first", Toast.LENGTH_LONG).show()
+        ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        return false
+    }
+    svc.openBar(target)
+    return true
+}
+
+/** Color rules of one app: what each picked color turns into. New ones come from the floating color bar or a hex code. */
 @Composable
 fun RecolorCard(pkg: String, sp: SharedPreferences) {
     var rules by remember(pkg) { mutableStateOf(RecolorRules.get(sp, pkg)) }
@@ -38,11 +56,18 @@ fun RecolorCard(pkg: String, sp: SharedPreferences) {
     }
     var code by remember { mutableStateOf("") }
     var to by remember { mutableStateOf(0x000000) }
+    var open by remember { mutableStateOf(false) }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    val ctx = LocalContext.current
     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Colours", fontWeight = FontWeight.Medium)
-            Text("A colour turns into another one inside this app (LSPosed module). Text on a fill that turns dark turns light.", fontSize = 13.sp, color = dim)
+            // collapsed by default: the header shows how many rules the app has
+            Row(Modifier.fillMaxWidth().clickable { open = !open }, verticalAlignment = Alignment.CenterVertically) {
+                Text("Colors (${rules.size})", fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                Icon(if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, null)
+            }
+            if (open) {
+            Text("One color turns into another inside this app.", fontSize = 13.sp, color = dim)
             rules.forEach { r ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Dot(r.first); Text("→", color = dim); Dot(r.second)
@@ -56,26 +81,27 @@ fun RecolorCard(pkg: String, sp: SharedPreferences) {
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(code, { code = it.removePrefix("#").take(6).uppercase() }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Colour code, e.g. FFFFFF") }, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(code, { code = it.removePrefix("#").take(6).uppercase() }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Color code, e.g. FFFFFF") }, shape = RoundedCornerShape(14.dp))
                 OutlinedButton({
                     val c = code.toIntOrNull(16)
                     if (code.length == 6 && c != null) { RecolorRules.add(sp, pkg, c or -0x1000000, to or -0x1000000, 12); code = ""; rules = RecolorRules.get(sp, pkg) }
                 }, enabled = code.length == 6 && code.toIntOrNull(16) != null) { Text("Add") }
             }
-            // live preview: the white page and what it becomes, updated as soon as another colour is chosen
+            // live preview: the white page and what it becomes, updated as soon as another color is chosen
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Dot(0xFFFFFF, 40); Text("→", fontSize = 20.sp); Dot(to, 40)
                 Text("#%06X".format(to and 0xFFFFFF), fontSize = 13.sp, color = dim, fontFamily = FontFamily.Monospace)
             }
-            Button({ RecolorRules.add(sp, pkg, 0xFFFFFF, to, 6); rules = RecolorRules.get(sp, pkg) }, Modifier.fillMaxWidth()) { Text("Save white → this colour") }
-            Button({ sp.edit().putString("pick_go", pkg).apply() }) { Icon(Icons.Filled.Colorize, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Pick on screen") }
+            Button({ RecolorRules.add(sp, pkg, 0xFFFFFF, to, 6); rules = RecolorRules.get(sp, pkg) }, Modifier.fillMaxWidth()) { Text("Save white → this color") }
+            Button({ openBar(ctx, pkg) }) { Icon(Icons.Filled.Colorize, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Pick on screen") }
+            }
         }
     }
 }
 
-/** The Colours tab: the apps that have colour rules, and the floating bar for the app that is in front. */
+/** The Colors tab: the apps that have color rules, and the floating bar for the app that is in front. */
 @Composable
-fun ColoursPage(apps: List<AppRow>, sp: SharedPreferences, ctx: Context) {
+fun ColorsPage(apps: List<AppRow>, sp: SharedPreferences, ctx: Context) {
     var withRules by remember { mutableStateOf(RecolorRules.apps(sp)) }
     DisposableEffect(Unit) {
         val l = SharedPreferences.OnSharedPreferenceChangeListener { _, k -> if (k != null && k.startsWith("rc_")) withRules = RecolorRules.apps(sp) }
@@ -84,10 +110,9 @@ fun ColoursPage(apps: List<AppRow>, sp: SharedPreferences, ctx: Context) {
     }
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Button({
-            sp.edit().putString("pick_go", "*").apply()
-            val home = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            ctx.startActivity(home)
-        }, Modifier.fillMaxWidth()) { Icon(Icons.Filled.Colorize, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Open the colour bar") }
+            // the bar appears first, then Home, so the user can open the app to pick from (the bar stays on screen)
+            if (openBar(ctx, "*")) ctx.startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }, Modifier.fillMaxWidth()) { Icon(Icons.Filled.Colorize, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Open the color bar") }
         withRules.forEach { pkg ->
             val name = apps.firstOrNull { it.pkg == pkg }?.label ?: pkg
             Text(name, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp))

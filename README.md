@@ -50,7 +50,7 @@ Android has its own dark rendering (the one behind **Override force dark** in De
 
 - It works with the LSPosed module. Tick the app in the module's list and restart it.
 - It is not guaranteed. Some apps opt out of it, and some draw with their own graphics engine, which Android's dark rendering does not reach. YouTube, for example, already uses its own dark theme, and force dark can make it look worse.
-- Android's force dark ends at about `#1C1C1C`. Turn on **Pure black on top** to lower the black level a little more, so that grey becomes `#000000`. This needs root.
+- Android's force dark ends at about `#1C1C1C`, a dark grey. For a true black, add a colour rule for that grey.
 
 If an app stays white, try a colour rule for its white page first. It is the more predictable of the two.
 

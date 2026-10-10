@@ -7,3 +7,7 @@
 -keep class com.umutk.blackout.XposedInit { *; }
 -keep class com.umutk.blackout.Status { *; }
 -dontwarn de.robv.android.xposed.**
+-keep class com.umutk.blackout.ModernEntry { *; }
+-keep class com.umutk.blackout.BlackOutApp { *; }
+-dontwarn io.github.libxposed.**
+-keep class io.github.libxposed.service.** { *; }

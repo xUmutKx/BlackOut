@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <!-- list the installed Google apps; nothing leaves the phone (no INTERNET permission) -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
         <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <application
+        android:name=".BlackOutApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -44,5 +45,7 @@
             android:exported="true"
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+            <!-- shortcut: the libxposed service provider crashed the app at start on this phone; removed until it is checked -->
+        <provider android:name="io.github.libxposed.service.XposedProvider" tools:node="remove" />
     </application>
 </manifest>

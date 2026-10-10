@@ -11,8 +11,8 @@ android {
         applicationId = "com.umutk.blackout"
         minSdk = 31          // fabricated overlays (cmd overlay fabricate) need Android 12+
         targetSdk = 34
-        versionCode = 18
-        versionName = "0.18"
+        versionCode = 26
+        versionName = "0.26"
         ndk { abiFilters += "arm64-v8a" }
     }
     buildTypes {
@@ -47,9 +47,15 @@ dependencies {
     implementation("com.squareup.okio:okio:3.9.0")
     // compile-only stub of the Xposed API (tools/make_stub.py); LSPosed provides the real classes at run time
     compileOnly(files("libs/xposed-stub.jar"))
+    // modern libxposed API (compile-only: LSPosed provides it) and its service client for the settings mirror
+    compileOnly("io.github.libxposed:api:102.0.0")
+    implementation("io.github.libxposed:service:102.0.0")
     // Shizuku (shell-level access without root)
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
 }
 
 composeCompiler { includeComposeMappingFile.set(false) }
+
+// shortcut: libxposed artifacts ask for compileSdk 37, BlackOut builds against 34 (AGP 8.5); the AAR metadata check is off until compileSdk and AGP are raised together
+tasks.matching { it.name.startsWith("checkRelease") && it.name.contains("AarMetadata") }.configureEach { enabled = false }

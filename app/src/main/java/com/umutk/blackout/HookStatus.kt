@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedBridge
 import java.util.concurrent.atomic.AtomicInteger
 
 /** What the LSPosed module did inside one app, counted while it runs and sent to BlackOut so the app page can show it. */
@@ -25,12 +23,14 @@ object Counters {
 object Reporter {
     const val ACTION = "com.umutk.blackout.HOOK_STATUS"
 
-    fun install(pkg: String, prefsKeys: Int, fd: Boolean, smart: Boolean, pages: Boolean) {
+    fun install(pkg: String, prefsKeys: Int, fd: Boolean, smart: Boolean, pages: Boolean, testToast: Boolean = false) {
         try {
-            XposedBridge.hookAllMethods(Application::class.java, "onCreate", object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
+            Hooks.all(Application::class.java, "onCreate", object : Hook() {
+                override fun afterHookedMethod(param: HookParam) {
                     val app = param.thisObject as? Application ?: return
                     val h = Handler(Looper.getMainLooper())
+                    // a visible sign that the module runs inside this app (no logcat needed)
+                    if (testToast) h.postDelayed({ try { android.widget.Toast.makeText(app, "BlackOut module: active here", android.widget.Toast.LENGTH_LONG).show() } catch (_: Throwable) { } }, 2_500)
                     val tick = object : Runnable {
                         override fun run() {
                             try {
@@ -47,7 +47,7 @@ object Reporter {
                     h.postDelayed(tick, 4_000)
                 }
             })
-        } catch (t: Throwable) { XposedBridge.log("BlackOut: reporter $t") }
+        } catch (t: Throwable) { Hooks.log("BlackOut: reporter $t") }
     }
 }
 

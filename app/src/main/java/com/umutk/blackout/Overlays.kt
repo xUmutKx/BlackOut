@@ -1,7 +1,7 @@
 package com.umutk.blackout
 
 /**
- * Turns colour resources of other apps black with fabricated runtime resource overlays (what `cmd overlay fabricate` creates).
+ * Turns color resources of other apps black with fabricated runtime resource overlays (what `cmd overlay fabricate` creates).
  * One overlay per resource, all named bo_<package>_<resource>, so they can be listed and removed again.
  */
 object Overlays {
@@ -9,7 +9,7 @@ object Overlays {
     private fun safe(s: String) = s.replace(Regex("[^A-Za-z0-9_]"), "_")
     private fun oname(pkg: String, res: String) = tag(pkg) + safe(res)
 
-    /** The colour with every channel scaled by [keep] (0 = pure black), keeping alpha. */
+    /** The color with every channel scaled by [keep] (0 = pure black), keeping alpha. */
     fun scaled(color: Int, keep: Float, tint: Int = 0): Int {
         val r = ((((color shr 16) and 255) * keep).toInt() + ((tint shr 16) and 255)).coerceAtMost(255)
         val g = ((((color shr 8) and 255) * keep).toInt() + ((tint shr 8) and 255)).coerceAtMost(255)
@@ -36,9 +36,9 @@ object Overlays {
     }
 
     /**
-     * Creates + enables overlays for [items] (resource name to new colour) of [pkg].
+     * Creates + enables overlays for [items] (resource name to new color) of [pkg].
      * The first one runs alone and shows Android's own answer; if it fails the rest is not even tried (an app that does not allow overlays
-     * would otherwise fail hundreds of times). The rest goes in parallel batches so that a few hundred colours take seconds, not minutes.
+     * would otherwise fail hundreds of times). The rest goes in parallel batches so that a few hundred colors take seconds, not minutes.
      */
     fun apply(pkg: String, items: List<Pair<String, Int>>, onProgress: (Int, Int) -> Unit = { _, _ -> }): Result {
         if (items.isEmpty()) return Result(true, "nothing to apply")
@@ -47,7 +47,7 @@ object Overlays {
         val ok0 = (probe.text.lines().lastOrNull()?.trim()?.toIntOrNull() ?: 0) > 0
         if (!ok0) {
             val log = probe.text.substringBefore("count:").trim()
-            val why = if (log.contains("Unable to retrieve overlay information")) "This app does not let overlays change that colour (it is not overlayable). Use Dark pages or the LSPosed module for it instead."
+            val why = if (log.contains("Unable to retrieve overlay information")) "This app does not let overlays change that color (it is not overlayable). Use Dark pages or the LSPosed module for it instead."
                 else "Android said:\n" + log.ifBlank { "(nothing: is 'cmd overlay' available on this Android version?)" }
             return Result(false, "No overlay is enabled. $why")
         }
@@ -70,10 +70,10 @@ object Overlays {
         val script = "for o in \$(cmd overlay list --user 0 | grep -o '[A-Za-z.]*:$t[A-Za-z0-9_]*'); do cmd overlay disable --user 0 \$o >/dev/null 2>&1; done; cmd overlay list --user 0 | grep '$t' | grep -c '\\[x\\]'"
         val out = Privilege.run(script)
         val left = out.text.lines().lastOrNull()?.trim()?.toIntOrNull() ?: 0
-        return if (left == 0) Result(true, "Removed. Restart the app to see the original colours.") else Result(false, "$left overlays are still enabled")
+        return if (left == 0) Result(true, "Removed. Restart the app to see the original colors.") else Result(false, "$left overlays are still enabled")
     }
 
-    /** Colours the user set by hand, per app: resource name to colour, kept as "ov_<pkg>" in preferences. */
+    /** Colors the user set by hand, per app: resource name to color, kept as "ov_<pkg>" in preferences. */
     fun overrides(sp: android.content.SharedPreferences, pkg: String): Map<String, Int> =
         sp.getString("ov_$pkg", "").orEmpty().split(';').mapNotNull { p ->
             val i = p.lastIndexOf('='); if (i <= 0) null else p.substring(i + 1).toLongOrNull(16)?.let { p.substring(0, i) to (it.toInt() or -0x1000000) }
@@ -85,7 +85,7 @@ object Overlays {
         sp.edit().putString("ov_$pkg", m.entries.joinToString(";") { "${it.key}=%06x".format(it.value and 0xFFFFFF) }).apply()
     }
 
-    /** When an app with hand-set colours comes to the front and its overlays are gone (reboot, or Android dropped them), they are made again. */
+    /** When an app with hand-set colors comes to the front and its overlays are gone (reboot, or Android dropped them), they are made again. */
     fun reapply(sp: android.content.SharedPreferences, pkg: String) {
         val o = overrides(sp, pkg)
         if (o.isEmpty() || activeCount(pkg) >= o.size) return
@@ -102,7 +102,7 @@ object Overlays {
     fun diagnose(): String = Privilege.run(
         "echo \"Android \$(getprop ro.build.version.release) (SDK \$(getprop ro.build.version.sdk)), \$(getprop ro.product.manufacturer) \$(getprop ro.product.model)\"; id; " +
         "echo; echo \"force dark property: \$(getprop debug.hwui.force_dark)\"; " +
-        // read-only look at the screen colour transform (what Dark pages and the black level hand to SurfaceFlinger) and the system inversion switches
+        // read-only look at the screen color transform (what Dark pages and the black level hand to SurfaceFlinger) and the system inversion switches
         "echo \"SurfaceFlinger: \$(service check SurfaceFlinger 2>&1 | head -1)\"; dumpsys SurfaceFlinger 2>/dev/null | grep -i -m3 -E 'color.*transform|colorMatrix'; " +
         "echo \"inversion: \$(settings get secure accessibility_display_inversion_enabled) force invert: \$(settings get secure accessibility_force_invert_color_enabled)\"; " +
         "echo; cmd overlay 2>&1 | grep -i -A3 'fabricate' | head -12; echo; cmd overlay list --user 0 2>&1 | grep -c 'bo_'"

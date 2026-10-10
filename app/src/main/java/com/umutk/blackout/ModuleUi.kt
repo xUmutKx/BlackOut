@@ -33,7 +33,6 @@ fun ForceDarkCard(pkg: String, mode: Privilege.Mode) {
     val sp = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
     var fd by remember { mutableStateOf(sp.getStringSet("fd_apps", emptySet()) ?: emptySet()) }
-    var crush by remember { mutableStateOf(sp.getStringSet("crush_apps", emptySet()) ?: emptySet()) }
     var smart by remember { mutableStateOf(sp.getStringSet("smart_apps", emptySet()) ?: emptySet()) }
     var adv by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<String?>(null) }
@@ -49,22 +48,9 @@ fun ForceDarkCard(pkg: String, mode: Privilege.Mode) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Make this app dark (LSPosed)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text("For apps with only a light theme. Android's force dark turns pages dark and text light and leaves photos alone; on top of it the module paints big white, light blue and grey areas pure black and turns dark text light. Tick this app under BlackOut in LSPosed too.", fontSize = 13.sp, color = dim)
+                    Text("For light-only apps: pages turn dark and white areas black.", fontSize = 13.sp, color = dim, maxLines = 2)
                 }
                 Switch(pkg in fd && pkg in smart, { setBoth(it) })
-            }
-            Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Pure black on top", fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                    Text("Android's dark is about #1C1C1C. While this app is open, root lowers the black level so that grey becomes #000000. Needs root and the watcher.", fontSize = 13.sp, color = dim)
-                }
-                Switch(pkg in crush, { v ->
-                    crush = if (v) crush + pkg else crush - pkg
-                    val e = sp.edit().putStringSet("crush_apps", crush)
-                    if (v && sp.getInt("crush_level", 30) < 28) e.putInt("crush_level", 30)
-                    e.apply()
-                    if (v && !AppWatch.enabled(ctx)) scope.launch { withContext(Dispatchers.IO) { AppWatch.enableWithPower() } }
-                }, enabled = mode != Privilege.Mode.None)
             }
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Takes effect when the app starts again.", Modifier.weight(1f), fontSize = 13.sp, color = dim)
@@ -131,7 +117,7 @@ fun SystemForceDarkCard(mode: Privilege.Mode, sp: android.content.SharedPreferen
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(if (on) "Force dark is ON (all light apps)" else "Force dark is off", fontWeight = FontWeight.Bold)
-                    Text("The same as Developer options > Override force-dark: every app with a light theme gets Android's dark rendering. Pages turn dark, text turns light, photos stay. Needs root. No LSPosed.", fontSize = 13.sp, color = dim)
+                    Text("Same as Developer options > Override force-dark. Needs root, no LSPosed.", fontSize = 13.sp, maxLines = 2)
                 }
                 Switch(on, { v ->
                     on = v; sp.edit().putBoolean("fdsys_on", v).apply()
@@ -145,7 +131,6 @@ fun SystemForceDarkCard(mode: Privilege.Mode, sp: android.content.SharedPreferen
             if (mode == Privilege.Mode.None) Text("Needs root first (Settings > Root access).", fontSize = 13.sp, color = Color(0xFFFFB74D), modifier = Modifier.padding(top = 4.dp))
             now?.let { Text("Android says debug.hwui.force_dark = $it", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 6.dp)) }
             msg?.let { Text(it, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
-            Text("Android's dark is about #1C1C1C. For pure black switch on Pure black on top in an app's page. It lasts until the phone restarts and is switched on again by itself. Apps that opt out of force dark need the per-app way (Apps > the app > Make this app dark).", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 6.dp))
         }
     }
 }
@@ -166,11 +151,10 @@ fun PagesModCard(pkg: String, mode: Privilege.Mode) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Dark pages, only the pages (LSPosed)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text("Inside this app only: big light pictures (PDF pages, paper) and big white areas swap light and dark with the Dark pages colours. Toolbars, menus and icons stay as they are. Tick this app in LSPosed too.", fontSize = 13.sp, color = dim)
+                    Text("Only the pages: big light pictures and white areas turn dark. Toolbars and icons stay.", fontSize = 13.sp, color = dim, maxLines = 2)
                 }
                 Switch(pkg in apps, { v -> apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("pgmod_apps", apps).apply() })
             }
-            Text("Reaches what the app draws through Android. A page the app paints with its own graphics engine stays as it is.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 6.dp))
             HookStatusBlock(report, pkg in apps)
             PageViewPicker(pkg, mode)
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -182,7 +166,7 @@ fun PagesModCard(pkg: String, mode: Privilege.Mode) {
     }
 }
 
-/** What the grey limit means, in colours: a strip of greys (top: what an app asks for, bottom: what it gets) and a small dark app before and after. */
+/** What the grey limit means, in colors: a strip of greys (top: what an app asks for, bottom: what it gets) and a small dark app before and after. */
 @Composable
 fun GreyPreview(limit: Float, keep: Float, tint: Int = 0) {
     val l = limit.toInt(); val k = keep / 100f
@@ -263,7 +247,7 @@ private fun MockDarkApp(fix: ((Int) -> Int)?, modifier: Modifier, look: MockLook
     }
 }
 
-/** The grey limit slider with its colour in sight: the track is the grey ramp itself, the label carries a swatch of the chosen grey. */
+/** The grey limit slider with its color in sight: the track is the grey ramp itself, the label carries a swatch of the chosen grey. */
 @Composable
 fun GreySlider(limit: Float, onChange: (Float) -> Unit, onDone: () -> Unit) {
     val v = limit.toInt()
@@ -280,7 +264,7 @@ fun GreySlider(limit: Float, onChange: (Float) -> Unit, onDone: () -> Unit) {
         Slider(limit, onChange, valueRange = 24f..96f, onValueChangeFinished = onDone,
             colors = SliderDefaults.colors(activeTrackColor = Color.Transparent, inactiveTrackColor = Color.Transparent, thumbColor = Color(0xFF8C9EFF)))
     }
-    Text("Left: a dark grey that is nearly black. Right: a lighter grey. Everything from the left up to the chosen swatch becomes black.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("Left: nearly black. Right: lighter grey.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** What the dimming layer does to a white page, a dark page and a line of text. */
@@ -300,10 +284,10 @@ fun LayerPreview(alpha: Float, rgb: Int) {
 
 val TintChoices = listOf("Black" to 0x000000, "Navy" to 0x050A18, "Blue" to 0x08142C, "Teal" to 0x051616, "Forest" to 0x07120A, "Plum" to 0x120818, "Warm" to 0x140E08, "Red" to 0x1A0808)
 
-/** Side colour for the "black": instead of #000000 the surfaces become a very dark blue, green, plum... (tint is added after the brightness is scaled). */
+/** Side color for the "black": instead of #000000 the surfaces become a very dark blue, green, plum... (tint is added after the brightness is scaled). */
 @Composable
 fun TintPicker(tint: Int, onPick: (Int) -> Unit) {
-    Text("Colour of the dark", fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+    Text("Color of the dark", fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
     Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         TintChoices.forEach { (n, c) ->
             val sel = c == tint

@@ -32,13 +32,13 @@ fun CrushCard(pkg: String, mode: Privilege.Mode) {
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(vertical = 6.dp)) {
         Column(Modifier.padding(14.dp)) {
-            Text("This app hides its colours", fontWeight = FontWeight.Bold)
-            Text("Overlays cannot recolour it. With root, BlackOut can darken the screen while this app is open.", fontSize = 13.sp, color = dim)
+            Text("This app hides its colors", fontWeight = FontWeight.Bold)
+            Text("Overlays cannot recolor it. With root, BlackOut can darken the screen while this app is open.", fontSize = 13.sp, color = dim)
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Darken while this app is open", Modifier.weight(1f), fontSize = 14.sp)
                 Switch(on, { v -> apps = if (v) apps + pkg else apps - pkg; sp.edit().putStringSet("crush_apps", apps).apply() })
             }
-            Text("Everything gets ${level.toInt()} darker; greys up to that become pure black. Contrast between tones is kept.", fontSize = 13.sp)
+            Text("Everything gets ${level.toInt()} darker; greys up to that go black.", fontSize = 13.sp)
             Slider(level, { level = it }, valueRange = 8f..80f, onValueChangeFinished = { sp.edit().putInt("crush_level", level.toInt()).apply() })
             LevelPreview(level)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

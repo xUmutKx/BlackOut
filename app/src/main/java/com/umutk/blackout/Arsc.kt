@@ -4,10 +4,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.zip.ZipFile
 
-/** One colour resource entry of an app's resources.arsc (a literal colour or an @color reference), for one config. */
+/** One color resource entry of an app's resources.arsc (a literal color or an @color reference), for one config. */
 class ColorEntry(val id: Int, val name: String, val night: Boolean, val type: Int, val data: Long)
 
-/** A colour resource that ends up as a dark neutral grey: what BlackOut can turn into black. */
+/** A color resource that ends up as a dark neutral grey: what BlackOut can turn into black. */
 class Candidate(val id: Int, val name: String, val color: Int, val night: Boolean)
 
 class ScanResult(val pkg: String, val entries: Int, val references: Int, val nightEntries: Int, val namesStripped: Boolean, val candidates: List<Candidate>)
@@ -89,7 +89,7 @@ object Arsc {
                             for (k in idx.indices) {
                                 val e = p + estart + off[k]
                                 val eflags = b.u16(e + 2); val key = b.u32(e + 4).toInt()
-                                if (eflags and 0x01 != 0 || eflags and 0x08 != 0) continue // complex / compact: not a plain colour
+                                if (eflags and 0x01 != 0 || eflags and 0x08 != 0) continue // complex / compact: not a plain color
                                 val vtype = b.u8(e + 8 + 3); val data = b.u32(e + 8 + 4)
                                 if (vtype == 0x1c || vtype == 0x1d || vtype == 0x1e || vtype == 0x1f || vtype == 0x01) {
                                     val rid = (pkgId shl 24) or (tid shl 16) or idx[k]
@@ -127,7 +127,7 @@ object Arsc {
         return a == 255 && mx in 1..limit && mx - mn <= spread
     }
 
-    /** Reads the app's base APK and returns the colour resources that resolve to a dark neutral grey. */
+    /** Reads the app's base APK and returns the color resources that resolve to a dark neutral grey. */
     fun scan(apkPath: String, limit: Int = 0x40, all: Boolean = false): ScanResult {
         val bytes = ZipFile(apkPath).use { z ->
             val e = z.getEntry("resources.arsc") ?: error("no resources.arsc")
@@ -139,7 +139,7 @@ object Arsc {
         val found = LinkedHashMap<Int, Candidate>()
         for (e in entries) {
             val c = resolve(table, e.id, e.night) ?: continue
-            // all = every opaque colour (whites and accents too), otherwise only the dark neutral greys
+            // all = every opaque color (whites and accents too), otherwise only the dark neutral greys
             if (if (all) ((c ushr 24) and 255) == 255 else isDarkGray(c, limit)) found.putIfAbsent(e.id, Candidate(e.id, e.name, c, e.night))
         }
         // names like "0_resource_name_obfuscated" cannot be told apart by an overlay

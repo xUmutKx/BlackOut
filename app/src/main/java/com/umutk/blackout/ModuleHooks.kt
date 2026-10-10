@@ -13,15 +13,12 @@ import android.graphics.RectF
 import android.graphics.RenderNode
 import android.view.View
 import android.webkit.WebView
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
 import java.lang.reflect.Method
 import java.util.WeakHashMap
 
-private fun hook(f: () -> Unit) { try { f() } catch (t: Throwable) { XposedBridge.log("BlackOut: $t") } }
+private fun hook(f: () -> Unit) { try { f() } catch (t: Throwable) { Hooks.log("BlackOut: $t") } }
 
-/** The module's colour rule, shared with the preview in the app: a dark neutral grey no brighter than [limit] becomes black ([keep] of it stays). */
+/** The module's color rule, shared with the preview in the app: a dark neutral grey no brighter than [limit] becomes black ([keep] of it stays). */
 object Grey {
     fun fix(c: Int, limit: Int, keep: Float, tint: Int = 0): Int {
         if (((c ushr 24) and 255) != 255) return c
@@ -39,8 +36,8 @@ object Grey {
  */
 object ForceDarkHooks {
     fun install() {
-        fun hookWith(count: Boolean) = object : XC_MethodHook() {
-            override fun beforeHookedMethod(param: MethodHookParam) {
+        fun hookWith(count: Boolean) = object : Hook() {
+            override fun beforeHookedMethod(param: HookParam) {
                 val a = param.args
                 if (a.isEmpty()) return
                 when (val v = a[0]) {
@@ -51,17 +48,17 @@ object ForceDarkHooks {
         }
         val on = hookWith(false)
         // setForceDark(boolean) up to Android 14, setForceDark(int type) after it
-        hook { XposedBridge.hookAllMethods(HardwareRenderer::class.java, "setForceDark", hookWith(true)) }
+        hook { Hooks.all(HardwareRenderer::class.java, "setForceDark", hookWith(true)) }
         // views and render nodes that opt out are let in again
-        hook { XposedBridge.hookAllMethods(View::class.java, "setForceDarkAllowed", on) }
-        hook { XposedBridge.hookAllMethods(RenderNode::class.java, "setForceDarkAllowed", on) }
+        hook { Hooks.all(View::class.java, "setForceDarkAllowed", on) }
+        hook { Hooks.all(RenderNode::class.java, "setForceDarkAllowed", on) }
         // web pages inside the app: ask WebView for its own dark rendering (on new Android versions a light app theme can still veto it)
         hook {
-            XposedBridge.hookAllConstructors(WebView::class.java, object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
+            Hooks.ctors(WebView::class.java, object : Hook() {
+                override fun afterHookedMethod(param: HookParam) {
                     val s = (param.thisObject as? WebView)?.settings ?: return
                     try { s.javaClass.getMethod("setAlgorithmicDarkeningAllowed", Boolean::class.javaPrimitiveType).invoke(s, true) } catch (_: Throwable) { }
-                    try { s.javaClass.getMethod("setForceDark", Int::class.javaPrimitiveType).invoke(s, 2) } catch (_: Throwable) { }
+                    try { s.javaClass.getMethod("setForceDark", Integer.TYPE).invoke(s, 2) } catch (_: Throwable) { }
                 }
             })
         }
@@ -70,7 +67,7 @@ object ForceDarkHooks {
 
 /**
  * Pages only: inside one app (Samsung Notes, PDF readers) big light pictures (PDF pages, paper, ink layers) and big light flat fills
- * get light and dark swapped with the Dark pages colours, and dark text turns light so it stays readable on them. Toolbars, menus and small icons are left alone.
+ * get light and dark swapped with the Dark pages colors, and dark text turns light so it stays readable on them. Toolbars, menus and small icons are left alone.
  * Only drawing that goes through Android's Canvas is reached; pages an app paints with its own GPU code are not.
  */
 object PageHooks {
@@ -133,18 +130,18 @@ object PageHooks {
         }
         val screen = Resources.getSystem().displayMetrics
 
-        val h = object : XC_MethodHook() {
-            override fun beforeHookedMethod(param: MethodHookParam) {
+        val h = object : Hook() {
+            override fun beforeHookedMethod(param: HookParam) {
                 undo.get()!!.add(change(param))
             }
 
-            override fun afterHookedMethod(param: MethodHookParam) {
+            override fun afterHookedMethod(param: HookParam) {
                 val stack = undo.get()!!
                 val u = (if (stack.isEmpty()) null else stack.removeAt(stack.size - 1)) ?: return
                 if (u.recolored) u.paint.color = u.color else u.paint.colorFilter = u.filter
             }
 
-            private fun change(param: MethodHookParam): Undo? {
+            private fun change(param: HookParam): Undo? {
                 val canvas = param.thisObject as? Canvas ?: return null
                 val method = param.method as? Method ?: return null
                 val types = method.parameterTypes
@@ -164,7 +161,7 @@ object PageHooks {
                         return Undo(p, null, c, true)
                     }
                     "drawColor" -> {
-                        if (types.firstOrNull() == Int::class.javaPrimitiveType) { val c = args[0] as Int; if (isLight(c)) { args[0] = map(c); Counters.fills.incrementAndGet() } }
+                        if (types.firstOrNull() == Integer.TYPE) { val c = args[0] as Int; if (isLight(c)) { args[0] = map(c); Counters.fills.incrementAndGet() } }
                         return null
                     }
                     "drawBitmap" -> {
@@ -194,28 +191,28 @@ object PageHooks {
                 }
             }
         }
-        val classes = listOfNotNull(Canvas::class.java, XposedHelpers.findClassIfExists("android.graphics.BaseRecordingCanvas", null))
+        val classes = listOfNotNull(Canvas::class.java, Hooks.find("android.graphics.BaseRecordingCanvas"))
         val names = listOf("drawBitmap", "drawColor", "drawPaint", "drawRect", "drawRoundRect", "drawText", "drawTextRun", "drawTextOnPath", "drawPosText")
-        for (k in classes) for (n in names) hook { XposedBridge.hookAllMethods(k, n, h) }
+        for (k in classes) for (n in names) hook { Hooks.all(k, n, h) }
     }
 }
 
 /**
- * A different way for apps that draw their pages with their own view (Samsung Notes, readers): the views you pick get a colour filter
- * (Android 12+ RenderEffect) that swaps light and dark with the Dark pages colours, children included. Nothing else in the app changes.
+ * A different way for apps that draw their pages with their own view (Samsung Notes, readers): the views you pick get a color filter
+ * (Android 12+ RenderEffect) that swaps light and dark with the Dark pages colors, children included. Nothing else in the app changes.
  */
 object ViewEffectHooks {
     fun install(cfg: PageDark.Cfg, classes: Set<String>) {
         if (android.os.Build.VERSION.SDK_INT < 31) return
         val filter = ColorMatrixColorFilter(PageDark.colorMatrix(cfg))
         hook {
-            XposedBridge.hookAllMethods(View::class.java, "onAttachedToWindow", object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
+            Hooks.all(View::class.java, "onAttachedToWindow", object : Hook() {
+                override fun afterHookedMethod(param: HookParam) {
                     val v = param.thisObject as? View ?: return
                     var k: Class<*>? = v.javaClass
                     while (k != null && k != View::class.java) { if (k.name in classes) break; k = k.superclass }
                     if (k == null || k == View::class.java) return
-                    try { v.setRenderEffect(android.graphics.RenderEffect.createColorFilterEffect(filter)) } catch (t: Throwable) { XposedBridge.log("BlackOut: view effect $t") }
+                    try { v.setRenderEffect(android.graphics.RenderEffect.createColorFilterEffect(filter)) } catch (t: Throwable) { Hooks.log("BlackOut: view effect $t") }
                 }
             })
         }
@@ -224,8 +221,8 @@ object ViewEffectHooks {
 
 
 /**
- * Web pages inside an app (the Google app's results, mail bodies, in-app browsers) are drawn by Chromium, not through Android's colour calls,
- * so the colour hooks never see them. This runs a small script in every WebView of the app: every element whose background is an opaque dark
+ * Web pages inside an app (the Google app's results, mail bodies, in-app browsers) are drawn by Chromium, not through Android's color calls,
+ * so the color hooks never see them. This runs a small script in every WebView of the app: every element whose background is an opaque dark
  * grey up to the limit becomes #000, now and when the page changes. Light pages are left alone (force dark makes them dark first).
  */
 object WebBlack {
@@ -247,8 +244,8 @@ new MutationObserver(function(ms){for(var i=0;i<ms.length;i++){var m=ms[i];if(m.
     fun install(limit: Int) {
         val js = SCRIPT.replace("@LIM@", limit.toString())
         hook {
-            XposedBridge.hookAllMethods(WebView::class.java, "onAttachedToWindow", object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
+            Hooks.all(WebView::class.java, "onAttachedToWindow", object : Hook() {
+                override fun afterHookedMethod(param: HookParam) {
                     val w = param.thisObject as? WebView ?: return
                     synchronized(running) { if (running[w] == true) return; running[w] = true }
                     // a page change wipes the script, so it is offered again every moment while the view is on screen (it does nothing if it is already there)
@@ -267,11 +264,17 @@ new MutationObserver(function(ms){for(var i=0;i<ms.length;i++){var m=ms[i];if(m.
 }
 
 /**
- * Colour rules for one app, set from the Colours page or the floating picker: every flat fill (and text) that is close to a chosen colour
- * is drawn in another one. When a light colour is turned dark, dark text turns light with it so it stays readable.
+ * Color rules for one app, set from the Colors page or the floating picker: every flat fill (and text) that is close to a chosen color
+ * is drawn in another one. When a light color is turned dark, dark text turns light with it so it stays readable.
  */
 object Recolor {
     class Rule(val from: Int, val to: Int, val tol: Int)
+
+    /** Built-in rules that need no setup: Google Play's dark surfaces go pure black, like AMOLED. */
+    fun builtin(pkg: String): List<Rule> = when (pkg) {
+        "com.android.vending" -> listOf(Rule(0xFF131314.toInt(), 0xFF000000.toInt(), 5), Rule(0xFF1E1F20.toInt(), 0xFF000000.toInt(), 5))
+        else -> emptyList()
+    }
 
     /** "RRGGBB>RRGGBB>percent;..." as stored by the app. */
     fun parse(s: String?): List<Rule> = s.orEmpty().split(';').mapNotNull { p ->
@@ -298,13 +301,13 @@ object Recolor {
             return if (lightText && ((c ushr 24) and 255) >= 128 && lum(c) < .4f) (c and -0x1000000) or 0xEBEBEB else c
         }
         val undo = ThreadLocal.withInitial { ArrayList<Pair<Paint, Int>?>() }
-        val h = object : XC_MethodHook() {
-            override fun beforeHookedMethod(param: MethodHookParam) {
+        val h = object : Hook() {
+            override fun beforeHookedMethod(param: HookParam) {
                 val stack = undo.get()!!
                 val method = param.method as? Method ?: run { stack.add(null); return }
                 val types = method.parameterTypes
                 if (method.name == "drawColor") {
-                    if (types.firstOrNull() == Int::class.javaPrimitiveType) { val c = param.args[0] as Int; val m = map(c); if (m != c) param.args[0] = m }
+                    if (types.firstOrNull() == Integer.TYPE) { val c = param.args[0] as Int; val m = map(c); if (m != c) param.args[0] = m }
                     stack.add(null); return
                 }
                 val pi = types.indexOf(Paint::class.java)
@@ -314,31 +317,31 @@ object Recolor {
                 val m = if (method.name.startsWith("drawText") || method.name == "drawPosText") mapText(c) else if (p.style == Paint.Style.STROKE) c else map(c)
                 if (m != c) { p.color = m; stack.add(p to c) } else stack.add(null)
             }
-            override fun afterHookedMethod(param: MethodHookParam) {
+            override fun afterHookedMethod(param: HookParam) {
                 val stack = undo.get()!!
                 val u = (if (stack.isEmpty()) null else stack.removeAt(stack.size - 1)) ?: return
                 u.first.color = u.second
             }
         }
-        val classes = listOfNotNull(Canvas::class.java, XposedHelpers.findClassIfExists("android.graphics.BaseRecordingCanvas", null))
+        val classes = listOfNotNull(Canvas::class.java, Hooks.find("android.graphics.BaseRecordingCanvas"))
         val names = listOf("drawColor", "drawPaint", "drawRect", "drawRoundRect", "drawCircle", "drawOval", "drawPath", "drawText", "drawTextRun", "drawTextOnPath", "drawPosText")
-        for (k in classes) for (n in names) hook { XposedBridge.hookAllMethods(k, n, h) }
-        // plain colour drawables and colour lookups (window and view backgrounds)
+        for (k in classes) for (n in names) hook { Hooks.all(k, n, h) }
+        // plain color drawables and color lookups (window and view backgrounds)
         hook {
-            XposedHelpers.findAndHookMethod(android.graphics.drawable.ColorDrawable::class.java, "draw", Canvas::class.java, object : XC_MethodHook() {
-                override fun beforeHookedMethod(param: MethodHookParam) {
+            Hooks.one(android.graphics.drawable.ColorDrawable::class.java, "draw", Canvas::class.java, object : Hook() {
+                override fun beforeHookedMethod(param: HookParam) {
                     val d = param.thisObject as android.graphics.drawable.ColorDrawable
                     val c = d.color; val m = map(c)
                     if (m != c) d.color = m
                 }
             })
         }
-        val after = object : XC_MethodHook() {
-            override fun afterHookedMethod(param: MethodHookParam) { (param.result as? Int)?.let { val m = map(it); if (m != it) param.result = m } }
+        val after = object : Hook() {
+            override fun afterHookedMethod(param: HookParam) { (param.result as? Int)?.let { val m = map(it); if (m != it) param.result = m } }
         }
-        val int = Int::class.javaPrimitiveType
-        hook { XposedHelpers.findAndHookMethod(Resources::class.java, "getColor", int, android.content.res.Resources.Theme::class.java, after) }
-        hook { XposedHelpers.findAndHookMethod(Resources::class.java, "getColor", int, after) }
-        hook { XposedHelpers.findAndHookMethod(android.content.res.TypedArray::class.java, "getColor", int, int, after) }
+        val int = Integer.TYPE
+        hook { Hooks.one(Resources::class.java, "getColor", int, android.content.res.Resources.Theme::class.java, after) }
+        hook { Hooks.one(Resources::class.java, "getColor", int, after) }
+        hook { Hooks.one(android.content.res.TypedArray::class.java, "getColor", int, int, after) }
     }
 }

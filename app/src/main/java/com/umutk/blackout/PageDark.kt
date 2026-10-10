@@ -1,8 +1,8 @@
 package com.umutk.blackout
 
 /**
- * Dark pages: a screen-wide colour matrix (the kind Android's own colour inversion uses) that turns white pages into the chosen
- * colour and black text into white. With [Cfg.hueSafe] only the lightness is turned around, so colours in photos and ink keep their hue.
+ * Dark pages: a screen-wide color matrix (the kind Android's own color inversion uses) that turns white pages into the chosen
+ * color and black text into white. With [Cfg.hueSafe] only the lightness is turned around, so colors in photos and ink keep their hue.
  * Needs root or Shizuku: the matrix is handed to SurfaceFlinger. It lasts until reboot.
  */
 object PageDark {
@@ -15,7 +15,7 @@ object PageDark {
         val lo = floatArrayOf(ch(c.bg, 16), ch(c.bg, 8), ch(c.bg, 0))
         val hi = floatArrayOf(ch(c.text, 16), ch(c.text, 8), ch(c.text, 0))
         if (c.hueSafe) {
-            // only the lightness is turned around: white -> page colour, black -> text, while every colour keeps its hue and saturation
+            // only the lightness is turned around: white -> page color, black -> text, while every color keeps its hue and saturation
             val w = floatArrayOf(.299f, .587f, .114f)
             val m = Array(3) { r -> FloatArray(3) { k -> (if (r == k) 1f else 0f) + w[k] * (lo[r] - hi[r] - 1f) } }
             return m to hi
@@ -51,7 +51,7 @@ object PageDark {
 
     fun fromPrefs(sp: android.content.SharedPreferences): Cfg = from({ k, d -> sp.getFloat(k, d) }, sp.getBoolean("pg_hue", true))
 
-    /** The saved colours, read through [f] so the LSPosed module (which has no SharedPreferences) can use it too. */
+    /** The saved colors, read through [f] so the LSPosed module (which has no SharedPreferences) can use it too. */
     fun from(f: (String, Float) -> Float, hueSafe: Boolean): Cfg {
         val bg = (f("pg_r", 0f).toInt() shl 16) or (f("pg_g", 0f).toInt() shl 8) or f("pg_b", 0f).toInt()
         val t = f("pg_text", 235f).toInt().let { (it shl 16) or (it shl 8) or it }

@@ -61,7 +61,7 @@ private fun samsungApp(pkg: String) = pkg.startsWith("com.samsung.") || pkg.star
 
 private fun googleApp(pkg: String) = pkg.startsWith("com.google.") || pkg == "com.android.vending" || pkg == "com.android.chrome" || pkg.startsWith("com.android.vending")
 
-/** Colours that should stay as they are: outlines, dividers, shadows, scrims, ripples, text. */
+/** Colors that should stay as they are: outlines, dividers, shadows, scrims, ripples, text. */
 private val KEEP = Regex("outline|divider|stroke|border|scrim|shadow|ripple|text|icon|ink|hint|disabled|inverse|light|on_|_on", RegexOption.IGNORE_CASE)
 
 @Composable
@@ -115,9 +115,9 @@ private fun Root() {
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
         Box(Modifier.weight(1f)) { Column(Modifier.fillMaxSize()) {
         when (page) {
-            "colours" -> {
-                TopBar("Colours") { page = "home" }
-                Column(Modifier.verticalScroll(rememberScrollState())) { ColoursPage(apps, prefs, ctx) }
+            "colors" -> {
+                TopBar("Colors") { page = "home" }
+                Column(Modifier.verticalScroll(rememberScrollState())) { ColorsPage(apps, prefs, ctx) }
             }
             "module" -> {
                 TopBar("LSPosed module") { page = "home" }
@@ -173,7 +173,7 @@ private fun Root() {
                 }
             }
             "settings" -> {
-                TopBar(when (cat) { "surface" -> "Colours"; "access" -> "Root access"; "diag" -> "Help"; "about" -> "About"; else -> "Settings" }) { if (cat.isEmpty()) page = "home" else cat = "" }
+                TopBar(when (cat) { "surface" -> "Colors"; "access" -> "Root access"; "diag" -> "Help"; "about" -> "About"; "data" -> "Data"; else -> "Settings" }) { if (cat.isEmpty()) page = "home" else cat = "" }
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     when (cat) {
                         "surface" -> Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -199,12 +199,14 @@ private fun Root() {
                             if (mode == Privilege.Mode.None) Text("Needs root or Shizuku first (Settings > Access).", color = Color(0xFFFFB74D), fontSize = 13.sp)
                             if (text.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) { Text(text, Modifier.padding(12.dp), fontFamily = FontFamily.Monospace, fontSize = 13.sp) }
                         }
+                        "data" -> DataCard(prefs)
                         "about" -> AboutPage()
                         else -> {
-                            SetRow(Icons.Filled.Tune, "Colours", "Grey limit ${limit.toInt()}, keep ${keep.toInt()}%") { cat = "surface" }
+                            SetRow(Icons.Filled.Tune, "Colors", "Grey limit ${limit.toInt()}, keep ${keep.toInt()}%") { cat = "surface" }
                             SetRow(Icons.Filled.Security, "Root access", if (mode == Privilege.Mode.None) "Not available" else "Using ${Privilege.detail}") { cat = "access" }
                             SetRow(Icons.Filled.BugReport, "Help", "See why something does not work") { cat = "diag" }
-                            SetRow(Icons.Filled.Info, "About", "BlackOut 0.14") { cat = "about" }
+                            SetRow(Icons.Filled.Save, "Data", "Export or import every setting") { cat = "data" }
+                            SetRow(Icons.Filled.Info, "About", "BlackOut 0.20") { cat = "about" }
                         }
                     }
                 }
@@ -227,19 +229,14 @@ private fun Root() {
                 SetRow(Icons.Filled.DarkMode, "Dark pages", "White pages", big = true, badge = if (prefs.getBoolean("pg_on", false)) "ON" else "OFF") { page = "pages" }
                 SetRow(Icons.Filled.Extension, "LSPosed module", "Black apps", big = true, badge = if (Status.isActive()) "ON" else null) { page = "module" }
                 SetRow(Icons.Filled.InvertColors, "Force dark", "Light apps", big = true, badge = if (prefs.getBoolean("fdsys_on", false)) "ON" else "OFF") { page = "sysfd" }
-                SetRow(Icons.Filled.AutoAwesome, "Google apps", "Material You", big = true) { page = "global" }
                 SetRow(Icons.Filled.Apps, "Apps", "${apps.count { it.launch }}", big = true) { page = "apps" }
-                apps.firstOrNull { it.pkg == "com.samsung.android.app.notes" }?.let { n ->
-                    SetRow(Icons.Filled.EditNote, "Samsung Notes", "Pages", big = true) { page = "notes" }
-                }
-                SetRow(Icons.Filled.Settings, "Settings", "", big = true) { page = "settings"; cat = "" }
                 PrivacyNote()
             }
         }
         } }
         NavigationBar(containerColor = Color(0xFF0A0A0C)) {
-            listOf(Triple("home", "Home", Icons.Filled.Home), Triple("apps", "Apps", Icons.Filled.Apps), Triple("colours", "Colours", Icons.Filled.Palette), Triple("settings", "Settings", Icons.Filled.Settings)).forEach { (k, n, ic) ->
-                NavigationBarItem(page == k || (k == "home" && page !in setOf("apps", "colours", "settings")), { page = k; cat = "" }, { Icon(ic, n) }, label = { Text(n) },
+            listOf(Triple("home", "Home", Icons.Filled.Home), Triple("apps", "Apps", Icons.Filled.Apps), Triple("colors", "Colors", Icons.Filled.Palette), Triple("settings", "Settings", Icons.Filled.Settings)).forEach { (k, n, ic) ->
+                NavigationBarItem(page == k || (k == "home" && page !in setOf("apps", "colors", "settings")), { page = k; cat = "" }, { Icon(ic, n) }, label = { Text(n) },
                     colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Black, indicatorColor = Accent, selectedTextColor = Accent, unselectedIconColor = Color(0xFF9A9AA6), unselectedTextColor = Color(0xFF9A9AA6)))
             }
         }
@@ -295,7 +292,7 @@ private fun PrivilegeCard(mode: Privilege.Mode, onRoot: () -> Unit, onCheck: () 
                 Text(if (mode == Privilege.Mode.None) "No root / Shizuku access" else "Ready: using ${Privilege.detail}", fontWeight = FontWeight.Medium)
             }
             if (mode == Privilege.Mode.None) {
-                Text("Overlays can only be created by root or by the shell user. Grant root to BlackOut, or start Shizuku and allow BlackOut in it.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                Text("Needs root or Shizuku.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
                 if (Privilege.detail.isNotBlank()) Text(Privilege.detail, fontSize = 13.sp, color = Color(0xFFFFB74D), modifier = Modifier.padding(top = 6.dp))
             }
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -349,7 +346,6 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                     RecolorCard(app.pkg, spx)
                 }
                 if (result != null) {
-                    if (result.namesStripped) CrushCard(app.pkg, mode)
                     if (active >= 0) Text(if (active > 0) "$active overlays are active now" else "No BlackOut overlay active", fontSize = 13.sp, color = if (active > 0) Accent else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -378,7 +374,7 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                     TextButton(onScan) { Text("Re-scan") }
                 }
             }
-            if (result == null && error == null) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text("Reading the app's colours…") } }
+            if (result == null && error == null) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text("Reading the app's colors…") } }
             items(result?.candidates.orEmpty(), key = { it.id }) { c ->
                 val on = c.name !in off
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { if (on) off.add(c.name) else off.remove(c.name) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -390,7 +386,8 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                     }
                 }
             }
-            item { AllColoursCard(app, mode) }
+            item { SetupCards(app) }
+            item { AllColorsCard(app, mode) }
         }
     }
 }
@@ -407,7 +404,7 @@ private fun GlobalCard(mode: Privilege.Mode, keep: Float) {
     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(16.dp)) {
             Text("All Material You apps at once", fontWeight = FontWeight.Bold)
-            Text("Play Store, Gmail, Photos, Clock, Settings and others take their dark greys from Android's colour palette. Turning those tones black blackens them all, without scanning each app.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            Text("Google apps take their greys from the system palette. Turn them black there.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Also tinted containers (chips, cards)", Modifier.weight(1f), fontSize = 13.sp)
                 Switch(tinted, { tinted = it })
@@ -430,7 +427,7 @@ private fun GlobalCard(mode: Privilege.Mode, keep: Float) {
             }
             if (active >= 0) Text(if (active > 0) "$active system tones are black now" else "Not active", fontSize = 13.sp, color = if (active > 0) Accent else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
             msg?.let { Text(it, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
-            Text("Afterwards close the apps (recents) and open them again. If a Google app stays grey it does not use the system palette: use the per-app list below.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+            Text("Then close the app from recents and open it again.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
         }
     }
 }

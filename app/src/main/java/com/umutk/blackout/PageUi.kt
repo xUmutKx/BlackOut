@@ -29,7 +29,7 @@ import kotlinx.coroutines.withContext
 
 private val PagePresets = listOf("AMOLED" to 0x000000, "Charcoal" to 0x121212, "Graphite" to 0x1E1F22, "Navy" to 0x0B1220, "Warm" to 0x1A1410, "Forest" to 0x0C1510)
 
-/** Turns white pages into a colour of your choice (live preview), text white, photos hue-corrected. Runs through root / Shizuku. */
+/** Turns white pages into a color of your choice (live preview), text white, photos hue-corrected. Runs through root / Shizuku. */
 @Composable
 fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences, showMaster: Boolean = true) {
     val scope = rememberCoroutineScope()
@@ -67,7 +67,7 @@ fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences, showMaster: Boolean
         Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Page colour", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("Page color", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Box(Modifier.size(26.dp).clip(CircleShape).background(Color(0xFF000000.toInt() or bg)).border(1.dp, Color(0x66FFFFFF), CircleShape))
                     Text("  #%06X".format(bg), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
                 }
@@ -77,15 +77,15 @@ fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences, showMaster: Boolean
                             leadingIcon = { Box(Modifier.size(16.dp).clip(CircleShape).background(Color(0xFF000000.toInt() or c)).border(1.dp, Color(0x66FFFFFF), CircleShape)) })
                     }
                 }
-                ColourSlider("Red", r, Color(0xFFEF5350), { r = it }) { push() }
-                ColourSlider("Green", g, Color(0xFF66BB6A), { g = it }) { push() }
-                ColourSlider("Blue", b, Color(0xFF42A5F5), { b = it }) { push() }
+                ColorSlider("Red", r, Color(0xFFEF5350), { r = it }) { push() }
+                ColorSlider("Green", g, Color(0xFF66BB6A), { g = it }) { push() }
+                ColorSlider("Blue", b, Color(0xFF42A5F5), { b = it }) { push() }
                 Text("Text brightness ${(txt / 255f * 100).toInt()}%", fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
                 Slider(txt, { txt = it }, valueRange = 140f..255f, onValueChangeFinished = { push() })
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Keep colours", fontSize = 14.sp)
-                        Text("Only light and dark are swapped; colours in photos and ink keep their hue.", fontSize = 13.sp, color = dim)
+                        Text("Keep colors", fontSize = 14.sp)
+                        Text("Only light and dark are swapped; colors in photos and ink keep their hue.", fontSize = 13.sp, color = dim)
                     }
                     Switch(hueSafe, { hueSafe = it; push(it) })
                 }
@@ -105,14 +105,14 @@ fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences, showMaster: Boolean
                 }
                 if (mode == Privilege.Mode.None) Text("Needs root or Shizuku first (Settings > Access).", color = Color(0xFFFFB74D), fontSize = 13.sp)
                 msg?.let { Text(it, fontSize = 13.sp, color = Color(0xFFF44336), modifier = Modifier.padding(top = 4.dp)) }
-                Text("The effect covers the whole screen and lasts until the phone restarts (turn it on again then). Only the white becomes your colour and text turns white; photos are kept as close to normal as a screen-wide filter can.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 6.dp))
+                Text("Covers the whole screen until the phone restarts.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 6.dp))
             }
         }
     }
 }
 
 @Composable
-private fun ColourSlider(name: String, v: Float, tint: Color, onChange: (Float) -> Unit, onDone: () -> Unit) {
+private fun ColorSlider(name: String, v: Float, tint: Color, onChange: (Float) -> Unit, onDone: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(name, Modifier.width(52.dp), fontSize = 13.sp)
         Slider(v, onChange, Modifier.weight(1f), valueRange = 0f..80f, onValueChangeFinished = onDone, colors = SliderDefaults.colors(thumbColor = tint, activeTrackColor = tint))
@@ -120,7 +120,7 @@ private fun ColourSlider(name: String, v: Float, tint: Color, onChange: (Float) 
     }
 }
 
-/** A tiny fake web page (title, text lines, a photo, a button) drawn in normal colours, optionally pushed through a colour filter. */
+/** A tiny fake web page (title, text lines, a photo, a button) drawn in normal colors, optionally pushed through a color filter. */
 @Composable
 fun MockPage(cf: ColorFilter?, modifier: Modifier) {
     Canvas(modifier.height(170.dp).clip(RoundedCornerShape(10.dp))) {

@@ -29,7 +29,7 @@ fun PageViewPicker(pkg: String, mode: Privilege.Mode) {
     var busy by remember { mutableStateOf(false) }
     Column(Modifier.padding(top = 8.dp)) {
         Text("Page view (another way)", fontWeight = FontWeight.Medium, fontSize = 14.sp)
-        Text("If the page does not change, find the view that draws it: tap Find, switch to the app and open a page. After 8 seconds the big views of the app are listed here. Tick the one that is the page.", fontSize = 13.sp, color = dim)
+        Text("Page not changing? Tap Find, open a page, then tick the big view.", fontSize = 13.sp, color = dim)
         OutlinedButton({
             busy = true
             scope.launch {
