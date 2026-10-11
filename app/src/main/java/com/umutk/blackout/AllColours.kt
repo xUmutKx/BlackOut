@@ -65,6 +65,8 @@ fun AllColorsCard(app: AppRow, mode: Privilege.Mode) {
     var pickedFrom by remember(app.pkg) { mutableStateOf("FFFFFF") }   // short list by default: dark colors only
     var showAll by remember(app.pkg) { mutableStateOf(false) }   // only a few colors at first
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    // an app that refused overlays (not overlayable): its overlay controls are hidden, only the reason is shown
+    val canOv = !Overlays.refused(app.pkg)
 
     Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // collapsed by default: the list is only read when the section is opened
@@ -72,9 +74,10 @@ fun AllColorsCard(app: AppRow, mode: Privilege.Mode) {
             Text("Colors", fontWeight = FontWeight.Medium, fontSize = 16.sp, modifier = Modifier.weight(1f))
             Icon(if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, null)
         }
-        Text("Tap a color in the list, then tap a color below to turn it into that. Needs BlackOut in Settings > Accessibility.", fontSize = 12.sp, color = dim)
-        if (open) SwapRows(sp, app.pkg, pickedFrom, { pickedFrom = it }) { msg = it }
-        if (open) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (canOv) Text("Tap a color in the list, then tap a color below to turn it into that. Needs BlackOut in Settings > Accessibility.", fontSize = 12.sp, color = dim)
+        else if (open) Text("This app is not overlayable on this phone, so its colors cannot be changed with overlays. Use the LSPosed route: turn BlackOut on in LSPosed and tick this app in its scope.", fontSize = 12.sp, color = dim)
+        if (open && canOv) SwapRows(sp, app.pkg, pickedFrom, { pickedFrom = it }) { msg = it }
+        if (open && canOv) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button({
                 busy = true
                 scope.launch {
@@ -92,7 +95,7 @@ fun AllColorsCard(app: AppRow, mode: Privilege.Mode) {
             }, enabled = !busy) { Text("Restore original") }
         }
         if (open && busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (open) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        if (open && canOv) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Only dark colors", Modifier.weight(1f), fontSize = 13.sp)
             Switch(onlyDark, { onlyDark = it })
         }
@@ -115,7 +118,7 @@ fun AllColorsCard(app: AppRow, mode: Privilege.Mode) {
                 busy = false
             }
         }
-        if (open) all?.let { list ->
+        if (open && canOv) all?.let { list ->
             OutlinedTextField(query, { query = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text("Search colors") })
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button({ quick(list.filter { isBg(it.name) && lumOf(it.color) > .8f }, 0xFF000000.toInt(), "Backgrounds made black") },
@@ -125,7 +128,7 @@ fun AllColorsCard(app: AppRow, mode: Privilege.Mode) {
             }
             if (msg.isNotEmpty()) Text(msg, fontSize = 12.sp, color = dim)
         }
-        if (open) all?.sortedByDescending { isBg(it.name) }?.filter { (query.isBlank() || it.name.contains(query, true)) && (!onlyDark || lumOf(it.color) < .5f) }?.let { list -> list.take(if (showAll) list.size else 8) to list.size }?.let { (rows, total) ->
+        if (open && canOv) all?.sortedByDescending { isBg(it.name) }?.filter { (query.isBlank() || it.name.contains(query, true)) && (!onlyDark || lumOf(it.color) < .5f) }?.let { list -> list.take(if (showAll) list.size else 8) to list.size }?.let { (rows, total) ->
           rows.forEach { c ->
             val now = made[c.name] ?: c.color
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(enabled = mode != Privilege.Mode.None) { pickedFrom = "%06X".format(c.color and 0xFFFFFF); editing = c }.padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -214,7 +217,7 @@ private fun SwapRows(sp: SharedPreferences, pkg: String, from: String, onFrom: (
         }, enabled = from.length == 6 && to.length == 6) { Text("Apply") }
         OutlinedButton({
             val key = hex(from) and 0xFFFFFF
-            RecolorRules.put(sp, pkg, RecolorRules.get(sp, pkg).filter { (it.first and 0xFFFFFF) != key })
+            RecolorRules.put(sp, pkg, RecolorRules.get(sp, pkg).filter { (it.from and 0xFFFFFF) != key })
             onMsg("Removed #$from. Reopen the app.")
         }) { Text("Remove") }
     }

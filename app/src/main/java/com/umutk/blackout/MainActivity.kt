@@ -81,6 +81,7 @@ private fun Root() {
     val scope = rememberCoroutineScope()
     val prefs = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
     var mode by remember { mutableStateOf(Privilege.mode) }
+    var detected by remember { mutableStateOf(false) }   // the first root/Shizuku check has finished
     var group by remember { mutableStateOf("all") }   // all / google / samsung
     var query by remember { mutableStateOf("") }
     var limit by remember { mutableFloatStateOf(prefs.getFloat("limit", 56f)) }   // brightest grey that still counts as a dark surface
@@ -93,6 +94,7 @@ private fun Root() {
 
     LaunchedEffect(Unit) {
         mode = withContext(Dispatchers.IO) { Privilege.detect(prefs.getString("prefer", "auto") ?: "auto") }
+        detected = true
         apps =withContext(Dispatchers.IO) {
             val pm = ctx.packageManager
             pm.getInstalledApplications(0)
@@ -102,6 +104,20 @@ private fun Root() {
     var page by rememberSaveable { mutableStateOf("home") }   // home, global, apps, settings
     var cat by rememberSaveable { mutableStateOf("") }        // category open inside Settings
     BackHandler(open != null || page != "home") { if (open != null) open = null else if (page == "settings" && cat.isNotEmpty()) cat = "" else page = "home" }
+
+    // Full-screen setup comes before the main UI: nothing else is drawn until the first root/Shizuku check has finished,
+    // and the setup stays up while a required step is missing (rechecked on every return to the app).
+    val setup = rememberSetup(prefs, mode)
+    var setupOpen by rememberSaveable { mutableStateOf(false) }   // stays open until Finish, even once the steps are all done
+    LaunchedEffect(detected, setup.complete) { if (detected && !setup.complete) setupOpen = true }
+    if (!detected) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    if (setupOpen || !setup.complete) {
+        SetupFlow(setup, mode, prefs, onMode = { mode = it }, onFinish = { setupOpen = false })
+        return
+    }
 
     val a = open
     if (a != null) {
@@ -150,11 +166,11 @@ private fun Root() {
             }
             "sysfd" -> {
                 TopBar("Force dark") { page = "home" }
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { SystemForceDarkCard(mode, prefs); SystemDarkThemeCard(mode, prefs) }
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { SystemForceDarkCard(mode, prefs); SystemDarkThemeCard(mode, prefs); InvertScreenCard(mode, prefs) }
             }
             "global" -> {
                 TopBar("All Material You apps") { page = "home" }
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { GlobalCard(mode, keep / 100f) }
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { GlobalCard(mode) }
             }
             "apps" -> {
                 TopBar("Apps") { page = "home" }
@@ -338,6 +354,8 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
     val off = remember(app.pkg) { mutableStateListOf<String>() }
     // the long colour list is collapsed by default; only the header shows until it is opened
     var listOpen by remember(app.pkg) { mutableStateOf(false) }                // names the user switched off
+    // an app that refused overlays before: the overlay-only buttons are hidden, the rest (rules, dark pages, restart) stays
+    var refused by remember(app.pkg) { mutableStateOf(Overlays.refused(app.pkg)) }
     LaunchedEffect(app.pkg) { if (result == null) onScan() }
     LaunchedEffect(app.pkg, mode) { if (mode != Privilege.Mode.None) active = withContext(Dispatchers.IO) { Overlays.activeCount(app.pkg) } }
     LaunchedEffect(result) { result?.candidates?.forEach { if (KEEP.containsMatchIn(it.name) && it.name !in off) off.add(it.name) } }
@@ -366,11 +384,11 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                     if (active >= 0) Text(if (active > 0) "$active overlays are active now" else "No BlackOut overlay active", fontSize = 13.sp, color = if (active > 0) Accent else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button({
+                    if (!refused) Button({
                         busy = true; progress = "Starting…"
                         scope.launch {
                             val r = withContext(Dispatchers.IO) { Overlays.apply(app.pkg, chosen.map { it.name to Overlays.scaled(it.color, keep, tintCtx.getSharedPreferences("blackout", android.content.Context.MODE_PRIVATE).getInt("tint", 0)) }) { d, n -> progress = "Applying $d / $n" } }
-                            msg = r.message; busy = false; progress = ""
+                            msg = r.message; busy = false; progress = ""; refused = Overlays.refused(app.pkg)
                             if (r.ok) {
                                 active = withContext(Dispatchers.IO) { Overlays.activeCount(app.pkg) }
                                 // with root or Shizuku the app is restarted here, so the new colors apply without a manual force stop
@@ -378,7 +396,7 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                             }
                         }
                     }, enabled = mode != Privilege.Mode.None && chosen.isNotEmpty() && !busy && result?.namesStripped != true) { Text("Apply (${chosen.size})") }
-                    OutlinedButton({
+                    if (!refused) OutlinedButton({
                         busy = true
                         scope.launch {
                             val r = withContext(Dispatchers.IO) { Overlays.remove(app.pkg) }
@@ -387,8 +405,9 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                     }, enabled = mode != Privilege.Mode.None && !busy) { Text("Remove") }
                     OutlinedButton({ scope.launch { withContext(Dispatchers.IO) { Overlays.forceStop(app.pkg) }; msg = "Stopped. Open the app again." } }, enabled = mode != Privilege.Mode.None) { Text("Restart app") }
                 }
+                if (refused) Text("This app is not overlayable on this phone, so overlays cannot change its colors. Use the LSPosed route: turn BlackOut on in LSPosed and tick this app in its scope.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                 msg?.let { Text(it, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!refused) Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton({ off.clear(); result?.candidates?.forEach { if (KEEP.containsMatchIn(it.name)) off.add(it.name) } }) { Text("Surfaces only") }
                     TextButton({ off.clear() }) { Text("Select all") }
                     TextButton({ off.clear(); result?.candidates?.forEach { off.add(it.name) } }) { Text("Select none") }
@@ -396,10 +415,10 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
                 }
             }
             if (result == null && error == null) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text("Reading the app's colors…") } }
-            item {
+            if (!refused) item {
                 TextButton({ listOpen = !listOpen }) { Text(if (listOpen) "Hide colors" else "Show colors (${result?.candidates?.size ?: 0})", fontSize = 13.sp) }
             }
-            if (listOpen) items(result?.candidates.orEmpty(), key = { it.id }) { c ->
+            if (listOpen && !refused) items(result?.candidates.orEmpty(), key = { it.id }) { c ->
                 val on = c.name !in off
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { if (on) off.add(c.name) else off.remove(c.name) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(on, { if (on) off.add(c.name) else off.remove(c.name) })
@@ -419,17 +438,32 @@ private fun Detail(app: AppRow, result: ScanResult?, error: String?, limit: Int,
 
 /** One switch for every Material You app: the dark tones of the system palette (the greys Google apps take their surfaces from) become black. */
 @Composable
-private fun GlobalCard(mode: Privilege.Mode, keep: Float) {
+private fun GlobalCard(mode: Privilege.Mode) {
+    val ctx = LocalContext.current
+    val sp = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
     var tinted by remember { mutableStateOf(false) }
+    var pure by remember { mutableStateOf(sp.getBoolean("glob_pure", true)) }   // black level: pure black, or the system palette's very dark grey
     var msg by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var active by remember { mutableIntStateOf(-1) }
-    LaunchedEffect(mode) { if (mode != Privilege.Mode.None) active = withContext(Dispatchers.IO) { Overlays.activeCount("android") } }
+    var supported by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(mode) {
+        if (mode != Privilege.Mode.None) {
+            active = withContext(Dispatchers.IO) { Overlays.activeCount("android") }
+            supported = withContext(Dispatchers.IO) { RootOpts.answers("cmd overlay list --user 0") }
+        }
+    }
     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(16.dp)) {
             Text("All Material You apps at once", fontWeight = FontWeight.Bold)
             Text("Google apps take their greys from the system palette. Turn them black there.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            SupportLine(mode, supported)
+            Text("Black level", fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(pure, { pure = true; sp.edit().putBoolean("glob_pure", true).apply() }, { Text("Pure black #000000") })
+                FilterChip(!pure, { pure = false; sp.edit().putBoolean("glob_pure", false).apply() }, { Text("Very dark grey #1A1A1A") })
+            }
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Also tinted containers (chips, cards)", Modifier.weight(1f), fontSize = 13.sp)
                 Switch(tinted, { tinted = it })
@@ -438,17 +472,18 @@ private fun GlobalCard(mode: Privilege.Mode, keep: Float) {
                 Button({
                     busy = true
                     scope.launch {
-                        val r = withContext(Dispatchers.IO) { Overlays.apply("android", Overlays.globalNames(tinted).map { it to Overlays.scaled(Overlays.GLOBAL_BASE, keep) }) }
+                        val base = Overlays.scaled(Overlays.GLOBAL_BASE, if (pure) 0f else 1f)
+                        val r = withContext(Dispatchers.IO) { Overlays.apply("android", Overlays.globalNames(tinted).map { it to base }) }
                         msg = r.message; busy = false; active = withContext(Dispatchers.IO) { Overlays.activeCount("android") }
                     }
-                }, enabled = mode != Privilege.Mode.None && !busy) { Text("Apply to all") }
+                }, enabled = mode != Privilege.Mode.None && !busy && supported != false) { Text("Apply to all") }
                 OutlinedButton({
                     busy = true
                     scope.launch {
                         val r = withContext(Dispatchers.IO) { Overlays.remove("android") }
                         msg = r.message; busy = false; active = withContext(Dispatchers.IO) { Overlays.activeCount("android") }
                     }
-                }, enabled = mode != Privilege.Mode.None && !busy) { Text("Remove") }
+                }, enabled = mode != Privilege.Mode.None && !busy) { Text("Reset to original") }
             }
             if (active >= 0) Text(if (active > 0) "$active system tones are black now" else "Not active", fontSize = 13.sp, color = if (active > 0) Accent else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
             msg?.let { Text(it, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }

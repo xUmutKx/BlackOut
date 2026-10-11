@@ -11,8 +11,8 @@ android {
         applicationId = "com.umutk.blackout"
         minSdk = 31          // fabricated overlays (cmd overlay fabricate) need Android 12+
         targetSdk = 34
-        versionCode = 38
-        versionName = "0.38"
+        versionCode = 39
+        versionName = "0.41"
         ndk { abiFilters += "arm64-v8a" }
     }
     buildTypes {

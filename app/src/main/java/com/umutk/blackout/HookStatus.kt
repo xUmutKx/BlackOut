@@ -39,7 +39,8 @@ object Reporter {
                                     .putExtra("fd", fd).putExtra("smart", smart).putExtra("pages", pages)
                                     .putExtra("forced", Counters.forced.get()).putExtra("fills", Counters.fills.get())
                                     .putExtra("texts", Counters.texts.get()).putExtra("greys", Counters.greys.get())
-                                    .putExtra("sdk", android.os.Build.VERSION.SDK_INT))
+                                    .putExtra("sdk", android.os.Build.VERSION.SDK_INT)
+                                    .putExtra("api", if (Hooks.modern != null) "modern" else "legacy"))
                             } catch (_: Throwable) { }
                             h.postDelayed(this, 15_000)
                         }
@@ -57,18 +58,22 @@ class HookReceiver : BroadcastReceiver() {
         if (i.action != Reporter.ACTION) return
         val pkg = i.getStringExtra("pkg")?.takeIf { it.length < 200 && it.all { ch -> ch.isLetterOrDigit() || ch == '.' || ch == '_' } } ?: return
         val v = listOf(System.currentTimeMillis(), i.getIntExtra("keys", -1), i.getBooleanExtra("fd", false), i.getBooleanExtra("smart", false), i.getBooleanExtra("pages", false),
-            i.getIntExtra("forced", 0), i.getIntExtra("fills", 0), i.getIntExtra("texts", 0), i.getIntExtra("greys", 0), i.getIntExtra("sdk", 0)).joinToString("|")
+            i.getIntExtra("forced", 0), i.getIntExtra("fills", 0), i.getIntExtra("texts", 0), i.getIntExtra("greys", 0), i.getIntExtra("sdk", 0), i.getStringExtra("api") ?: "?").joinToString("|")
         c.getSharedPreferences("hookstatus", Context.MODE_PRIVATE).edit().putString(pkg, v).apply()
     }
 }
 
 /** One parsed report. */
-class HookReport(val at: Long, val keys: Int, val fd: Boolean, val smart: Boolean, val pages: Boolean, val forced: Int, val fills: Int, val texts: Int, val greys: Int, val sdk: Int) {
+class HookReport(val at: Long, val keys: Int, val fd: Boolean, val smart: Boolean, val pages: Boolean, val forced: Int, val fills: Int, val texts: Int, val greys: Int, val sdk: Int, val api: String) {
     companion object {
         fun read(c: Context, pkg: String): HookReport? {
             val p = (c.getSharedPreferences("hookstatus", Context.MODE_PRIVATE).getString(pkg, null) ?: return null).split('|')
             if (p.size < 10) return null
-            return HookReport(p[0].toLong(), p[1].toInt(), p[2].toBoolean(), p[3].toBoolean(), p[4].toBoolean(), p[5].toInt(), p[6].toInt(), p[7].toInt(), p[8].toInt(), p[9].toInt())
+            return HookReport(p[0].toLong(), p[1].toInt(), p[2].toBoolean(), p[3].toBoolean(), p[4].toBoolean(), p[5].toInt(), p[6].toInt(), p[7].toInt(), p[8].toInt(), p[9].toInt(), p.getOrElse(10) { "?" })
         }
+
+        /** The most recent report from any app, or null if none has come in. */
+        fun newest(c: Context): HookReport? =
+            c.getSharedPreferences("hookstatus", Context.MODE_PRIVATE).all.keys.mapNotNull { read(c, it) }.maxByOrNull { it.at }
     }
 }

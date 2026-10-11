@@ -6,23 +6,36 @@ package com.umutk.blackout
  * Needs root or Shizuku: the matrix is handed to SurfaceFlinger. It lasts until reboot.
  */
 object PageDark {
-    class Cfg(val bg: Int, val text: Int, val hueSafe: Boolean)
+    /** [strength] blends the filter with the untouched screen: 0 = off, 1 = full dark pages. */
+    class Cfg(val bg: Int, val text: Int, val hueSafe: Boolean, val strength: Float = 1f)
 
     private fun ch(c: Int, shift: Int) = ((c shr shift) and 255) / 255f
 
-    /** Row-major 3x3 part and the offsets, normalised 0..1: out = hi + (hi - lo) * H * in. */
+    /** Row-major 3x3 part and the offsets, normalised 0..1: out = off + M * in, blended with the identity by [Cfg.strength]. */
     private fun parts(c: Cfg): Pair<Array<FloatArray>, FloatArray> {
         val lo = floatArrayOf(ch(c.bg, 16), ch(c.bg, 8), ch(c.bg, 0))
         val hi = floatArrayOf(ch(c.text, 16), ch(c.text, 8), ch(c.text, 0))
+        val m: Array<FloatArray>
         if (c.hueSafe) {
             // only the lightness is turned around: white -> page color, black -> text, while every color keeps its hue and saturation
             val w = floatArrayOf(.299f, .587f, .114f)
-            val m = Array(3) { r -> FloatArray(3) { k -> (if (r == k) 1f else 0f) + w[k] * (lo[r] - hi[r] - 1f) } }
-            return m to hi
+            m = Array(3) { r -> FloatArray(3) { k -> (if (r == k) 1f else 0f) + w[k] * (lo[r] - hi[r] - 1f) } }
+        } else {
+            val h = arrayOf(floatArrayOf(-1f, 0f, 0f), floatArrayOf(0f, -1f, 0f), floatArrayOf(0f, 0f, -1f))
+            m = Array(3) { r -> FloatArray(3) { k -> (hi[r] - lo[r]) * h[r][k] } }
         }
-        val h = arrayOf(floatArrayOf(-1f, 0f, 0f), floatArrayOf(0f, -1f, 0f), floatArrayOf(0f, 0f, -1f))
-        val m = Array(3) { r -> FloatArray(3) { k -> (hi[r] - lo[r]) * h[r][k] } }
-        return m to hi
+        // linear blend from the untouched screen (identity, no offset) to the full filter
+        val s = c.strength.coerceIn(0f, 1f)
+        val blended = Array(3) { r -> FloatArray(3) { k -> (if (r == k) 1f else 0f) * (1f - s) + m[r][k] * s } }
+        return blended to FloatArray(3) { hi[it] * s }
+    }
+
+    /** What one sRGB colour turns into under [c]: the swatches on the Dark pages card are drawn with this. */
+    fun mapColor(c: Cfg, rgb: Int): Int {
+        val (m, off) = parts(c)
+        val v = floatArrayOf(ch(rgb, 16), ch(rgb, 8), ch(rgb, 0))
+        fun out(r: Int) = Math.round((off[r] + m[r][0] * v[0] + m[r][1] * v[1] + m[r][2] * v[2]).coerceIn(0f, 1f) * 255f)
+        return (out(0) shl 16) or (out(1) shl 8) or out(2)
     }
 
     /** Android ColorMatrix (4x5 row-major, offsets 0..255) for the live preview. */
@@ -55,12 +68,13 @@ object PageDark {
     fun from(f: (String, Float) -> Float, hueSafe: Boolean): Cfg {
         val bg = (f("pg_r", 0f).toInt() shl 16) or (f("pg_g", 0f).toInt() shl 8) or f("pg_b", 0f).toInt()
         val t = f("pg_text", 235f).toInt().let { (it shl 16) or (it shl 8) or it }
-        return Cfg(bg, t, hueSafe)
+        return Cfg(bg, t, hueSafe, f("pg_strength", 1f))
     }
 
-    /** Raises the black level: every tone gets [level] (0..80 of 255) darker, so the greys up to it become pure black. The slope stays 1: contrast between tones is not stretched. */
+    /** Black level: greys up to [level] (0..80 of 255) become pure black, and the rest is stretched back up so white stays white. out = (in - t) / (1 - t). */
     fun applyCrush(level: Int): Privilege.Out {
-        val k = 1f; val off = -level / 255f
+        val t = level / 255f
+        val k = 1f / (1f - t); val off = -t * k
         val m = FloatArray(16).also { it[0] = k; it[5] = k; it[10] = k; it[12] = off; it[13] = off; it[14] = off; it[15] = 1f }
         return Privilege.run("service call SurfaceFlinger 1015 i32 1 " + m.joinToString(" ") { "f " + String.format(java.util.Locale.US, "%.4f", it) })
     }

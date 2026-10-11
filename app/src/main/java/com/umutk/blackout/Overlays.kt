@@ -5,6 +5,12 @@ package com.umutk.blackout
  * One overlay per resource, all named bo_<package>_<resource>, so they can be listed and removed again.
  */
 object Overlays {
+    /** Set once by the app at start, so the "not overlayable" answer can be remembered per app (key ovno_<pkg>). */
+    var prefs: android.content.SharedPreferences? = null
+
+    /** True when Android refused overlays for [pkg] before (not overlayable). Its overlay buttons are then hidden or disabled. */
+    fun refused(pkg: String): Boolean = try { prefs?.getBoolean("ovno_$pkg", false) == true } catch (_: Throwable) { false }
+
     private fun tag(pkg: String) = "bo_" + pkg.replace('.', '_') + "_"
     private fun safe(s: String) = s.replace(Regex("[^A-Za-z0-9_]"), "_")
     private fun oname(pkg: String, res: String) = tag(pkg) + safe(res)
@@ -47,10 +53,15 @@ object Overlays {
         val ok0 = (probe.text.lines().lastOrNull()?.trim()?.toIntOrNull() ?: 0) > 0
         if (!ok0) {
             val log = probe.text.substringBefore("count:").trim()
-            val why = if (log.contains("Unable to retrieve overlay information")) "This app does not let overlays change that color (it is not overlayable). Use Dark pages or the LSPosed module for it instead."
-                else "Android said:\n" + log.ifBlank { "(nothing: is 'cmd overlay' available on this Android version?)" }
+            // Android's own answer for an app that declares no overlayable resources (Google Play services, for example)
+            if (log.contains("Unable to retrieve overlay information")) {
+                try { prefs?.edit()?.putBoolean("ovno_$pkg", true)?.apply() } catch (_: Throwable) { }
+                return Result(false, "$pkg is not overlayable on this phone, so overlays cannot change its colors. Use the LSPosed route instead: turn BlackOut on in LSPosed and tick this app in its scope. Its colour rules then work when the app starts.")
+            }
+            val why = "Android said:\n" + log.ifBlank { "(nothing: is 'cmd overlay' available on this Android version?)" }
             return Result(false, "No overlay is enabled. $why")
         }
+        try { prefs?.edit()?.remove("ovno_$pkg")?.apply() } catch (_: Throwable) { }
         onProgress(1, items.size)
         var done = 1
         for (chunk in items.drop(1).chunked(16)) {
@@ -107,6 +118,12 @@ object Overlays {
         "echo \"inversion: \$(settings get secure accessibility_display_inversion_enabled) force invert: \$(settings get secure accessibility_force_invert_color_enabled)\"; " +
         "echo; cmd overlay 2>&1 | grep -i -A3 'fabricate' | head -12; echo; cmd overlay list --user 0 2>&1 | grep -c 'bo_'"
     ).text
+
+    /** Turns the app's BlackOut overlays on again (its hand-set colors are kept) or off, and restarts the app so the change shows. */
+    fun setEnabled(pkg: String, on: Boolean) {
+        if (on) reapply(prefs ?: return, pkg) else remove(pkg)
+        forceStop(pkg)
+    }
 
     fun forceStop(pkg: String) { Privilege.run("am force-stop $pkg") }
 }

@@ -34,9 +34,6 @@ import androidx.compose.ui.unit.dp
 private class SetupStep(val title: String, val text: String, val hint: String)
 
 private val SETUP_STEPS = listOf(
-    SetupStep("Turn BlackOut on in LSPosed",
-        "Open LSPosed, enable BlackOut and tick this app in its scope. Then close the app from recents and open it again.",
-        "Not listed? Reboot once after enabling the module. Scope changes need the app to restart."),
     SetupStep("Turn on dark pages",
         "In this app's page, switch on the dark pages option. Pages that paint themselves (Samsung Notes, readers) need it.",
         "Still light? Try the Pages section and pick the screen you see, then reopen the app."),
@@ -51,12 +48,12 @@ private val SETUP_STEPS = listOf(
         "Only one cross changes? Pick each one; each icon has its own colour."),
 )
 
-/** The setup as large cards, one at a time: Done or Skip slides the card away; Didn't work shows a hint. Progress is kept per app. */
+/** The per-app colour walkthrough (module and accessibility are in [SetupFlow]): Done or Skip slides the card away; Didn't work shows a hint. Progress is kept per app. */
 @Composable
 fun SetupCards(app: AppRow) {
     val ctx = LocalContext.current
     val sp = remember { ctx.getSharedPreferences("blackout", Context.MODE_PRIVATE) }
-    val key = "setup_${app.pkg}"
+    val key = "setup2_${app.pkg}"
     var step by remember(app.pkg) { mutableStateOf(sp.getInt(key, 0)) }
     var failed by remember(app.pkg) { mutableStateOf(false) }
     fun go(n: Int) { step = n; failed = false; sp.edit().putInt(key, n).apply() }

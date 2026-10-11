@@ -95,7 +95,7 @@ private fun HookStatusBlock(r: HookReport?, wanted: Boolean) {
         Text(if (fresh) "Module is running in this app" else "Module was running here ${age / 60} min ago (the app is closed now)", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = if (fresh) ok else dim)
         if (r.keys == 0) Text("It cannot read BlackOut's settings, so nothing you switch on here reaches it.", fontSize = 13.sp, color = bad)
         else if (wanted && !r.fd && !r.smart) Text("This app was started before you switched it on. Press Restart app.", fontSize = 13.sp, color = warn)
-        Text("Android ${r.sdk} · settings read: ${if (r.keys < 0) "unknown" else r.keys.toString()}", fontSize = 13.sp, color = dim)
+        Text("Android ${r.sdk} · ${r.api} API · settings read: ${if (r.keys < 0) "unknown" else r.keys.toString()}", fontSize = 13.sp, color = dim)
         if (r.fd) Text("Force dark switched on in ${r.forced} window${if (r.forced == 1) "" else "s"}" + if (r.forced == 0) " (none yet: open a screen of the app)" else "", fontSize = 13.sp, color = if (r.forced > 0) ok else warn)
         if (r.smart || r.pages) Text("Repainted ${r.fills} light areas, turned ${r.texts} dark texts light" + if (r.fills == 0 && r.texts == 0) " (nothing yet: the app may draw with its own engine)" else "", fontSize = 13.sp, color = if (r.fills + r.texts > 0) ok else warn)
         Text("Dark greys turned black: ${r.greys}", fontSize = 13.sp, color = dim)
@@ -110,8 +110,9 @@ fun SystemForceDarkCard(mode: Privilege.Mode, sp: android.content.SharedPreferen
     var now by remember { mutableStateOf<String?>(null) }
     var msg by remember { mutableStateOf<String?>(null) }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    var supported by remember { mutableStateOf<Boolean?>(null) }
     fun read() { scope.launch { now = withContext(Dispatchers.IO) { Privilege.run("getprop debug.hwui.force_dark").text.trim().ifBlank { "(not set)" } } } }
-    LaunchedEffect(mode) { if (mode != Privilege.Mode.None) read() }
+    LaunchedEffect(mode) { if (mode != Privilege.Mode.None) { read(); supported = withContext(Dispatchers.IO) { RootOpts.answers("[ \"\$(getprop ro.build.version.sdk)\" -ge 29 ]") } } }
     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -122,14 +123,28 @@ fun SystemForceDarkCard(mode: Privilege.Mode, sp: android.content.SharedPreferen
                 Switch(on, { v ->
                     on = v; sp.edit().putBoolean("fdsys_on", v).apply()
                     scope.launch {
-                        val o = withContext(Dispatchers.IO) { Privilege.run("setprop debug.hwui.force_dark ${if (v) "true" else "false"}; getprop debug.hwui.force_dark") }
+                        val o = withContext(Dispatchers.IO) {
+                            if (v) RootOpts.remember(sp, "fd") { Privilege.run("getprop debug.hwui.force_dark").text.trim() }
+                            Privilege.run("setprop debug.hwui.force_dark ${if (v) "true" else "false"}; getprop debug.hwui.force_dark")
+                        }
                         now = o.text.trim().ifBlank { "(not set)" }
                         msg = if (o.text.trim() == (if (v) "true" else "false")) "Done. Apps pick it up when they start: close them in recents and open them again." else "The phone did not take it: ${o.text.take(120)}"
                     }
-                }, enabled = mode != Privilege.Mode.None)
+                }, enabled = mode != Privilege.Mode.None && supported != false)
             }
-            if (mode == Privilege.Mode.None) Text("Needs root first (Settings > Root access).", fontSize = 13.sp, color = Color(0xFFFFB74D), modifier = Modifier.padding(top = 4.dp))
+            SupportLine(mode, supported)
             now?.let { Text("Android says debug.hwui.force_dark = $it", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 6.dp)) }
+            OutlinedButton({
+                scope.launch {
+                    val (orig, o) = withContext(Dispatchers.IO) {
+                        val orig = RootOpts.original(sp, "fd") ?: "false"
+                        RootOpts.forget(sp, "fd")
+                        orig to Privilege.run("setprop debug.hwui.force_dark ${if (orig == "true") "true" else "false"}; getprop debug.hwui.force_dark")
+                    }
+                    on = orig == "true"; sp.edit().putBoolean("fdsys_on", on).apply()
+                    now = o.text.trim().ifBlank { "(not set)" }; msg = "Back to the setting from before BlackOut."
+                }
+            }, Modifier.padding(top = 8.dp), enabled = mode != Privilege.Mode.None) { Text("Reset to original") }
             msg?.let { Text(it, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
         }
     }
@@ -322,7 +337,9 @@ fun SystemDarkThemeCard(mode: Privilege.Mode, sp: android.content.SharedPreferen
     val scope = rememberCoroutineScope()
     var on by remember { mutableStateOf(sp.getBoolean("sysdark_on", false)) }
     var msg by remember { mutableStateOf<String?>(null) }
+    var supported by remember { mutableStateOf<Boolean?>(null) }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    LaunchedEffect(mode) { if (mode != Privilege.Mode.None) supported = withContext(Dispatchers.IO) { RootOpts.answers("cmd uimode night") } }
     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -334,12 +351,26 @@ fun SystemDarkThemeCard(mode: Privilege.Mode, sp: android.content.SharedPreferen
                     on = v; sp.edit().putBoolean("sysdark_on", v).apply()
                     scope.launch {
                         // cmd uimode first; the settings key is the fallback for phones where that command is missing (value 2 = yes, 1 = no: verify on device)
-                        val o = withContext(Dispatchers.IO) { Privilege.run("cmd uimode night ${if (v) "yes" else "no"} 2>/dev/null || settings put secure ui_night_mode ${if (v) 2 else 1}; cmd uimode night 2>/dev/null") }
+                        val o = withContext(Dispatchers.IO) {
+                            RootOpts.remember(sp, "night") { if (Privilege.run("cmd uimode night 2>/dev/null").text.contains("yes", ignoreCase = true)) "yes" else "no" }
+                            Privilege.run("cmd uimode night ${if (v) "yes" else "no"} 2>/dev/null || settings put secure ui_night_mode ${if (v) 2 else 1}; cmd uimode night 2>/dev/null")
+                        }
                         msg = if (o.text.contains(if (v) "yes" else "no", ignoreCase = true)) "Done." else "The phone did not take it: ${o.text.take(120)}"
                     }
-                }, enabled = mode != Privilege.Mode.None)
+                }, enabled = mode != Privilege.Mode.None && supported != false)
             }
-            if (mode == Privilege.Mode.None) Text("Needs root first (Settings > Root access).", fontSize = 13.sp, color = Color(0xFFFFB74D), modifier = Modifier.padding(top = 4.dp))
+            SupportLine(mode, supported)
+            OutlinedButton({
+                scope.launch {
+                    val (orig, o) = withContext(Dispatchers.IO) {
+                        val orig = RootOpts.original(sp, "night") ?: "no"
+                        RootOpts.forget(sp, "night")
+                        orig to Privilege.run("cmd uimode night $orig 2>/dev/null || settings put secure ui_night_mode ${if (orig == "yes") 2 else 1}; cmd uimode night 2>/dev/null")
+                    }
+                    on = orig == "yes"; sp.edit().putBoolean("sysdark_on", on).apply()
+                    msg = "Back to the setting from before BlackOut: ${o.text.trim().take(60)}"
+                }
+            }, Modifier.padding(top = 8.dp), enabled = mode != Privilege.Mode.None) { Text("Reset to original") }
             msg?.let { Text(it, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
         }
     }

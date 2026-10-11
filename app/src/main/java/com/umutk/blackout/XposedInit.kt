@@ -58,10 +58,11 @@ object ModuleCore {
         (sp.getStringSet("pgview_" + pkg, emptySet()) ?: emptySet()).takeIf { it.isNotEmpty() }
             ?.let { ViewEffectHooks.install(PageDark.from({ k, d -> sp.getFloat(k, d) }, sp.getBoolean("pg_hue", true)), it) }
 
-        (Recolor.builtin(pkg) + Recolor.parse(sp.getString("rc_" + pkg, null))).takeIf { it.isNotEmpty() }?.let { rules ->
+        // the per-app switch turns every colour change of this app off (built-in ones too)
+        (if (RecolorRules.enabled(sp, pkg)) Recolor.builtin(pkg) + Recolor.parse(sp.getString("rc_" + pkg, null)) else emptyList()).takeIf { it.isNotEmpty() }?.let { rules ->
             Recolor.install(rules)
-            // a light color turned dark: apps that paint their page as a picture (Samsung Notes, readers) are not reached by flat-fill rules, so big light pictures, fills and dark text follow the same target color
-            val page = rules.firstOrNull { Recolor.lum(it.from) > .5f && Recolor.lum(it.to) < .35f }
+            // a light color turned fully dark: apps that paint their page as a picture (Samsung Notes, readers) are not reached by flat-fill rules, so big light pictures, fills and dark text follow the same target color
+            val page = rules.firstOrNull { Recolor.lum(it.from) > .5f && Recolor.lum(it.to) < .35f && it.strength == 100 }
             if (page != null && !ticked("smart_apps") && !ticked("pgmod_apps")) PageHooks.install(PageDark.Cfg(page.to and 0xFFFFFF, 0xEBEBEB, true))
         }
 

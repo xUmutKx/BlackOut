@@ -155,6 +155,7 @@ fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
     var keep by remember { mutableFloatStateOf(sp.getFloat("keep", 0f)) }
     var tint by remember { mutableStateOf(sp.getInt("tint", 0)) }
     var active by remember { mutableStateOf(Status.isActive()) }
+    var last by remember { mutableStateOf(HookReport.newest(ctx)) }
     var msg by remember { mutableStateOf<String?>(null) }
     var test by remember { mutableStateOf(sp.getBoolean("hook_test", false)) }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
@@ -174,8 +175,10 @@ fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(if (active) Color(0xFF4CAF50) else Color(0xFFFFB74D)))
                     Spacer(Modifier.width(10.dp))
                     Text(if (active) "Module is active in LSPosed (${Status.api()} API)" else "Module not detected yet", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    TextButton({ active = Status.isActive() }) { Text("Refresh") }
+                    TextButton({ active = Status.isActive(); last = HookReport.newest(ctx) }) { Text("Refresh") }
                 }
+                Text("Loaded here: ${Status.api()} entry · LSPosed service: ${if (SettingsMirror.bound) "connected" else "NOT connected (settings do not reach other apps)"}", fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                Text(last?.let { "Last report from an app: ${(System.currentTimeMillis() - it.at) / 1000} s ago, ${it.api} entry" } ?: "No app has reported yet.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 2.dp))
                 Text("Dark greys of the ticked apps go pure black.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
                 Text("LSPosed > BlackOut: switch it on, tick BlackOut and the apps, restart them.", fontSize = 13.sp, maxLines = 2, modifier = Modifier.padding(top = 4.dp))
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -278,12 +281,17 @@ fun InvertAppCard(pkg: String, mode: Privilege.Mode) {
     }
 }
 
+/** Do the switched-on colour features need the accessibility watcher? */
+fun watcherNeeded(sp: SharedPreferences): Boolean {
+    fun set(k: String) = !(sp.getStringSet(k, emptySet()) ?: emptySet()).isEmpty()
+    return sp.getBoolean("ly_on", false) || set("ly_apps") || set("pages_apps") || set("crush_apps")
+}
+
 /** Per-app effects need the accessibility watcher: say so on the home screen when one is on and the watcher is off. */
 @Composable
 fun WatcherReminder(sp: SharedPreferences, mode: Privilege.Mode) {
     val ctx = LocalContext.current
-    fun set(k: String) = !(sp.getStringSet(k, emptySet()) ?: emptySet()).isEmpty()
-    val needs = sp.getBoolean("ly_on", false) || set("ly_apps") || set("pages_apps") || set("crush_apps")
+    val needs = watcherNeeded(sp)
     var on by remember { mutableStateOf(AppWatch.enabled(ctx)) }
     LaunchedEffect(needs) { on = AppWatch.enabled(ctx) }
     if (!needs || on) return

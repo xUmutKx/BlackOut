@@ -16,6 +16,8 @@ class BlackOutApp : Application() {
         super.onCreate()
         try { SettingsMirror.start(this) } catch (_: Throwable) { }
         // every change goes to the backup file the user picked (it survives an uninstall; import it after a reinstall)
-        getSharedPreferences("blackout", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(autoBackup)
+        val sp = getSharedPreferences("blackout", MODE_PRIVATE)
+        Overlays.prefs = sp
+        sp.registerOnSharedPreferenceChangeListener(autoBackup)
     }
 }

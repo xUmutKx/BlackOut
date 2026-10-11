@@ -271,7 +271,7 @@ new MutationObserver(function(ms){for(var i=0;i<ms.length;i++){var m=ms[i];if(m.
  * is drawn in another one. When a light color is turned dark, dark text turns light with it so it stays readable.
  */
 object Recolor {
-    class Rule(val from: Int, val to: Int, val tol: Int)
+    class Rule(val from: Int, val to: Int, val tol: Int, val strength: Int = 100)
 
     /** Built-in rules that need no setup: Google Play's dark surfaces go pure black, like AMOLED. */
     fun builtin(pkg: String): List<Rule> = when (pkg) {
@@ -282,7 +282,7 @@ object Recolor {
     /** "RRGGBB>RRGGBB>percent;..." as stored by the app. */
     fun parse(s: String?): List<Rule> = s.orEmpty().split(';').mapNotNull { p ->
         val a = p.split('>')
-        if (a.size < 3) null else try { Rule(a[0].toLong(16).toInt() or -0x1000000, a[1].toLong(16).toInt() or -0x1000000, a[2].toInt().coerceIn(3, 60) * 255 / 100) } catch (_: Throwable) { null }
+        if (a.size < 3) null else try { Rule(a[0].toLong(16).toInt() or -0x1000000, a[1].toLong(16).toInt() or -0x1000000, a[2].toInt().coerceIn(3, 60) * 255 / 100, a.getOrNull(3)?.toIntOrNull()?.coerceIn(0, 100) ?: 100) } catch (_: Throwable) { null }
     }
 
     fun lum(c: Int) = (.299f * ((c shr 16) and 255) + .587f * ((c shr 8) and 255) + .114f * (c and 255)) / 255f
@@ -295,7 +295,7 @@ object Recolor {
         val lightText = rules.any { lum(it.to) < .35f && lum(it.from) > .5f }
         fun map(c: Int): Int {
             if (((c ushr 24) and 255) < 8) return c
-            for (r in rules) if (near(c, r.from, r.tol)) return (c and -0x1000000) or (r.to and 0xFFFFFF)
+            for (r in rules) if (near(c, r.from, r.tol)) return RecolorRules.mix(c, r.to, r.strength)
             return c
         }
         fun mapText(c: Int): Int {

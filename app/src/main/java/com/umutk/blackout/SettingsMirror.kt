@@ -10,6 +10,8 @@ object SettingsMirror : XposedServiceHelper.OnServiceListener {
     private lateinit var local: SharedPreferences
     private var remote: SharedPreferences? = null
     private val changed = SharedPreferences.OnSharedPreferenceChangeListener { _, key -> mirror(key) }
+    /** True while the LSPosed service is connected, i.e. the settings reach the modern hooks in other apps. */
+    @Volatile var bound = false
 
     fun start(app: Application) {
         local = app.getSharedPreferences("blackout", Application.MODE_PRIVATE)
@@ -18,11 +20,12 @@ object SettingsMirror : XposedServiceHelper.OnServiceListener {
 
     override fun onServiceBind(service: XposedService) {
         remote = service.getRemotePreferences("blackout")
+        bound = true
         local.registerOnSharedPreferenceChangeListener(changed)
         local.all.keys.forEach { mirror(it) }
     }
 
-    override fun onServiceDied(service: XposedService) { remote = null }
+    override fun onServiceDied(service: XposedService) { remote = null; bound = false }
 
     private fun mirror(key: String?) {
         if (key == null) return

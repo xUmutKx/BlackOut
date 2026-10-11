@@ -27,6 +27,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Sample colours for the Colours card: white, greys, text black, and the main hues. */
+private val SwatchSamples = listOf(0xFFFFFF, 0xF2F2F2, 0x9E9E9E, 0x3A3A3A, 0x000000, 0xE53935, 0xFB8C00, 0xFDD835, 0x43A047, 0x1E88E5)
+
 private val PagePresets = listOf("AMOLED" to 0x000000, "Charcoal" to 0x121212, "Graphite" to 0x1E1F22, "Navy" to 0x0B1220, "Warm" to 0x1A1410, "Forest" to 0x0C1510)
 
 /** Turns white pages into a color of your choice (live preview), text white, photos hue-corrected. Runs through root / Shizuku. */
@@ -38,16 +41,17 @@ fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences, showMaster: Boolean
     var b by remember { mutableFloatStateOf(prefs.getFloat("pg_b", 0f)) }
     var txt by remember { mutableFloatStateOf(prefs.getFloat("pg_text", 235f)) }
     var hueSafe by remember { mutableStateOf(prefs.getBoolean("pg_hue", true)) }
+    var strength by remember { mutableFloatStateOf(prefs.getFloat("pg_strength", 1f)) }
     var on by remember { mutableStateOf(prefs.getBoolean("pg_on", false)) }
     var msg by remember { mutableStateOf<String?>(null) }
     val bg = (r.toInt() shl 16) or (g.toInt() shl 8) or b.toInt()
     val t = txt.toInt().let { (it shl 16) or (it shl 8) or it }
-    val cfg = PageDark.Cfg(bg, t, hueSafe)
-    fun save() { prefs.edit().putFloat("pg_r", r).putFloat("pg_g", g).putFloat("pg_b", b).putFloat("pg_text", txt).putBoolean("pg_hue", hueSafe).apply() }
+    val cfg = PageDark.Cfg(bg, t, hueSafe, strength)
+    fun save() { prefs.edit().putFloat("pg_r", r).putFloat("pg_g", g).putFloat("pg_b", b).putFloat("pg_text", txt).putBoolean("pg_hue", hueSafe).putFloat("pg_strength", strength).apply() }
     fun push(h: Boolean = hueSafe) {
         save()
         if (on) scope.launch {
-            val o = withContext(Dispatchers.IO) { PageDark.apply(PageDark.Cfg(bg, t, h)) }
+            val o = withContext(Dispatchers.IO) { PageDark.apply(PageDark.Cfg(bg, t, h, strength)) }
             msg = if (o.code == 0) null else "Failed: ${o.text}"
         }
     }
@@ -61,6 +65,25 @@ fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences, showMaster: Boolean
                 Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     MockPage(null, Modifier.weight(1f))
                     MockPage(ColorFilter.colorMatrix(ColorMatrix(PageDark.colorMatrix(cfg))), Modifier.weight(1f))
+                }
+            }
+        }
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Colours", fontWeight = FontWeight.Bold)
+                Text("Each colour as it is (left) and as it will be (right).", fontSize = 13.sp, color = dim)
+                SwatchSamples.chunked(2).forEach { pair ->
+                    Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        pair.forEach { src ->
+                            val out = PageDark.mapColor(cfg, src)
+                            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF000000.toInt() or src)).border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(6.dp)))
+                                Text("  →  ", fontSize = 13.sp, color = dim)
+                                Box(Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF000000.toInt() or out)).border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(6.dp)))
+                                Text("  #%06X".format(out), fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -82,6 +105,8 @@ fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences, showMaster: Boolean
                 ColorSlider("Blue", b, Color(0xFF42A5F5), { b = it }) { push() }
                 Text("Text brightness ${(txt / 255f * 100).toInt()}%", fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
                 Slider(txt, { txt = it }, valueRange = 140f..255f, onValueChangeFinished = { push() })
+                Text("Strength ${(strength * 100).toInt()}%", fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                Slider(strength, { strength = it }, valueRange = 0f..1f, onValueChangeFinished = { push() })
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Keep colors", fontSize = 14.sp)
@@ -113,15 +138,6 @@ fun PageCard(mode: Privilege.Mode, prefs: SharedPreferences, showMaster: Boolean
                     Switch(fdOn, { v ->
                         fdOn = v
                         scope.launch { withContext(Dispatchers.IO) { Privilege.run("setprop debug.hwui.force_dark ${if (v) "true" else "false"}") } }
-                    }, enabled = mode != Privilege.Mode.None)
-                }
-                // manual only: the whole-screen invert, switched by you and nothing else
-                var invOn by remember { mutableStateOf(false) }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                    Text("Invert the whole screen (manual)", modifier = Modifier.weight(1f))
-                    Switch(invOn, { v ->
-                        invOn = v
-                        scope.launch { withContext(Dispatchers.IO) { Privilege.run("settings put secure accessibility_display_inversion_enabled ${if (v) 1 else 0}") } }
                     }, enabled = mode != Privilege.Mode.None)
                 }
             }

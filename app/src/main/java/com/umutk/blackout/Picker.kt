@@ -18,22 +18,47 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 
-/** Rules are kept as "RRGGBB>RRGGBB>percent;..." under rc_<package>. */
+/**
+ * Rules are kept as "RRGGBB>RRGGBB>tolerance>strength;..." under rc_<package> (strength is optional, 100 = full replace, older rules have none).
+ * Strength blends the matched colour towards the target: 0 leaves it alone, 100 replaces it.
+ */
 object RecolorRules {
-    fun get(sp: SharedPreferences, pkg: String): List<Triple<Int, Int, Int>> = sp.getString("rc_$pkg", "").orEmpty().split(';').mapNotNull { p ->
+    data class Rule(val from: Int, val to: Int, val tol: Int, val strength: Int = 100)
+
+    fun get(sp: SharedPreferences, pkg: String): List<Rule> = sp.getString("rc_$pkg", "").orEmpty().split(';').mapNotNull { p ->
         val a = p.split('>')
-        if (a.size < 3) null else try { Triple(a[0].toLong(16).toInt() or -0x1000000, a[1].toLong(16).toInt() or -0x1000000, a[2].toInt()) } catch (_: Throwable) { null }
+        if (a.size < 3) null else try {
+            Rule(a[0].toLong(16).toInt() or -0x1000000, a[1].toLong(16).toInt() or -0x1000000, a[2].toInt(), a.getOrNull(3)?.toIntOrNull()?.coerceIn(0, 100) ?: 100)
+        } catch (_: Throwable) { null }
     }
 
-    fun put(sp: SharedPreferences, pkg: String, rules: List<Triple<Int, Int, Int>>) {
-        val s = rules.joinToString(";") { "%06X>%06X>%d".format(it.first and 0xFFFFFF, it.second and 0xFFFFFF, it.third) }
+    fun put(sp: SharedPreferences, pkg: String, rules: List<Rule>) {
+        val s = rules.joinToString(";") { "%06X>%06X>%d>%d".format(it.from and 0xFFFFFF, it.to and 0xFFFFFF, it.tol, it.strength) }
         sp.edit().putString("rc_$pkg", s).apply()
     }
 
-    fun add(sp: SharedPreferences, pkg: String, from: Int, to: Int, tol: Int) =
-        put(sp, pkg, get(sp, pkg).filter { (it.first and 0xFFFFFF) != (from and 0xFFFFFF) } + Triple(from, to, tol))
+    fun add(sp: SharedPreferences, pkg: String, from: Int, to: Int, tol: Int, strength: Int = 100) =
+        put(sp, pkg, get(sp, pkg).filter { (it.from and 0xFFFFFF) != (from and 0xFFFFFF) } + Rule(from, to, tol, strength))
+
+    /** Same tolerance as the runtime hook (percent per channel, clamped the same way). */
+    fun matches(c: Int, r: Rule): Boolean {
+        val t = r.tol.coerceIn(3, 60) * 255 / 100
+        return Math.abs(((c shr 16) and 255) - ((r.from shr 16) and 255)) <= t && Math.abs(((c shr 8) and 255) - ((r.from shr 8) and 255)) <= t &&
+            Math.abs((c and 255) - (r.from and 255)) <= t
+    }
+
+    /** The colour [c] moved [strength] percent of the way towards [to]; alpha is kept. Shared by the runtime hook and the overlay path. */
+    fun mix(c: Int, to: Int, strength: Int): Int {
+        val s = strength.coerceIn(0, 100)
+        if (s == 100) return (c and -0x1000000) or (to and 0xFFFFFF)
+        fun ch(shift: Int) = (((c shr shift) and 255) * (100 - s) + ((to shr shift) and 255) * s + 50) / 100
+        return (c and -0x1000000) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
 
     fun apps(sp: SharedPreferences): List<String> = sp.all.keys.filter { it.startsWith("rc_") && !sp.getString(it, "").isNullOrBlank() }.map { it.removePrefix("rc_") }
+
+    /** Per-app switch for every colour change of the app (rules, built-in ones and overlays). On unless turned off. */
+    fun enabled(sp: SharedPreferences, pkg: String): Boolean = sp.getBoolean("rcon_$pkg", true)
 }
 
 /**
@@ -105,7 +130,7 @@ class ColorPicker(private val svc: AccessibilityService, private val wm: WindowM
                 if (picked == 0) { Toast.makeText(svc, "Move the ring over a color first", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
                 val pkg = if (target == "*") foreground() else target
                 if (pkg.isEmpty() || pkg == svc.packageName) { Toast.makeText(svc, "Open the app you want to change first", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
-                RecolorRules.add(sp, pkg, picked, to, tol)
+                store(pkg)
                 val name = try { svc.packageManager.getApplicationLabel(svc.packageManager.getApplicationInfo(pkg, 0)).toString() } catch (_: Throwable) { pkg }
                 Toast.makeText(svc, "Saved for $name", Toast.LENGTH_SHORT).show()
                 hide()
@@ -197,9 +222,18 @@ class ColorPicker(private val svc: AccessibilityService, private val wm: WindowM
         if (picked == 0) return
         val pkg = if (target == "*") foreground() else target
         if (pkg.isEmpty() || pkg == svc.packageName) { Toast.makeText(svc, "Open the app you want to change first", Toast.LENGTH_SHORT).show(); return }
-        RecolorRules.add(sp, pkg, picked, to, tol)
+        store(pkg)
         promptBox?.visibility = View.GONE
         Toast.makeText(svc, "Saved. Reopen the app to see it.", Toast.LENGTH_SHORT).show()
+    }
+
+    /** The module reads colour rules only when an app starts, so a running app keeps the old ones: it is restarted here (root or Shizuku). */
+    private fun store(pkg: String) {
+        RecolorRules.add(sp, pkg, picked, to, tol)
+        Thread {
+            if (Privilege.mode == Privilege.Mode.None) Privilege.detect(sp.getString("prefer", "auto") ?: "auto")
+            Overlays.forceStop(pkg)
+        }.start()
     }
 
     /** The chosen target dot stays full size and bright, the others are dimmed. */

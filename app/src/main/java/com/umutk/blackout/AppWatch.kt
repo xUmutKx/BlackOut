@@ -57,10 +57,10 @@ class AppWatch : AccessibilityService() {
 
     override fun onServiceConnected() {
         sp = getSharedPreferences("blackout", Context.MODE_PRIVATE)
-        // Android's own invert switch must start OFF: if a previous session left it on, turn it off now (invert is only used per app, on request)
+        // Android's own invert switch goes back to what the user chose on the Force dark page (off unless they switched it on)
         io.execute { try {
             if (Privilege.mode != Privilege.Mode.None) {
-                Privilege.run("settings put secure accessibility_display_inversion_enabled 0")
+                Privilege.run("settings put secure accessibility_display_inversion_enabled ${invertValue()}")
                 // the screen filter survives an app restart: clear it unless the user has Dark pages or an app list on
                 val wanted = sp.getBoolean("pg_on", false) || !(sp.getStringSet("pages_apps", emptySet()).isNullOrEmpty())
                 if (!wanted) PageDark.clear()
@@ -97,7 +97,7 @@ class AppWatch : AccessibilityService() {
         current = pkg
         currentCls = cls
         applyLayer(); applyRoot()
-        if (::sp.isInitialized) io.execute { Overlays.reapply(sp, pkg) }
+        if (::sp.isInitialized) io.execute { if (RecolorRules.enabled(sp, pkg)) Overlays.reapply(sp, pkg) }
         if (layer != null) scheduleHoles()
     }
 
@@ -187,7 +187,8 @@ class AppWatch : AccessibilityService() {
         val crush = false   // the screen-wide black level was removed: it also lifted the quick panel and other screens
         // nothing here is automatic any more: the screen filter is only on when the user switches Dark pages on, for the whole phone
         val pages = sp.getBoolean("pg_on", false)
-        val invert = false
+        // per-app invert: the app's "Invert" switch (inv_apps) while it is in front
+        val invert = current in (sp.getStringSet("inv_apps", emptySet()) ?: emptySet())
         // "inside a note": the whole-screen page colors only on the app's other screens, not on its main list (where the LSPosed hooks already work)
         val editor = false
         val want = if (invert) "invert" else if (crush) "crush" else if (pages || editor) "pages" else ""
@@ -204,19 +205,22 @@ class AppWatch : AccessibilityService() {
                 "invert" -> { PageDark.clear(); Privilege.run("settings put secure accessibility_display_inversion_enabled 1") }
                 else -> PageDark.clear()
             }
-            if (was == "invert" && want != "invert") Privilege.run("settings put secure accessibility_display_inversion_enabled 0")
+            if (was == "invert" && want != "invert") Privilege.run("settings put secure accessibility_display_inversion_enabled ${invertValue()}")
             shown = want
         }
     }
 
-    private fun mainScreen(pkg: String): String = try { packageManager.getLaunchIntentForPackage(pkg)?.component?.className.orEmpty() } catch (_: Throwable) { "" }
+    /** The value Android's invert switch should have when no app asks for invert: 1 only if the whole-screen invert is on (inv_on). */
+    private fun invertValue(): Int = if (::sp.isInitialized && sp.getBoolean("inv_on", false)) 1 else 0
+
+    private fun mainScreen(pkg: String): String =try { packageManager.getLaunchIntentForPackage(pkg)?.component?.className.orEmpty() } catch (_: Throwable) { "" }
 
     override fun onInterrupt() {}
 
     override fun onDestroy() {
         if (::sp.isInitialized) sp.unregisterOnSharedPreferenceChangeListener(listener)
-        // never leave the screen inverted behind when the watcher goes away
-        if (shown == "invert") try { Privilege.run("settings put secure accessibility_display_inversion_enabled 0") } catch (_: Exception) { }
+        // never leave the screen inverted behind when the watcher goes away (unless the user switched invert on for the whole screen)
+        if (shown == "invert") try { Privilege.run("settings put secure accessibility_display_inversion_enabled ${invertValue()}") } catch (_: Exception) { }
         ui.removeCallbacksAndMessages(null)
         layer?.let { try { wm?.removeView(it) } catch (_: Exception) { } }; layer = null
         io.shutdown(); super.onDestroy()
