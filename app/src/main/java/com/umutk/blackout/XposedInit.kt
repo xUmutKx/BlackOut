@@ -7,6 +7,7 @@ import android.content.res.TypedArray
 import android.graphics.Canvas
 import android.graphics.drawable.ColorDrawable
 import de.robv.android.xposed.IXposedHookLoadPackage
+import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.libxposed.api.XposedModule
@@ -17,6 +18,8 @@ object Status {
     @JvmStatic fun isActive(): Boolean = false
     /** Which entry runs the module here: "legacy", "modern" or "none" (set by the hook, like [isActive]). */
     @JvmStatic fun api(): String = "none"
+    /** The framework that runs the module here, as it names itself with its version (e.g. "LSPosed 1.9.2" or "Vector ..."); "" if unknown. */
+    @JvmStatic fun framework(): String = ""
 }
 
 /**
@@ -28,13 +31,16 @@ object ModuleCore {
     @Volatile private var started = false
 
     /** Makes BlackOut's own status check answer "active" and name the API ("legacy" or "modern") inside its own process. */
-    fun statusActive(loader: ClassLoader?, api: String) {
+    fun statusActive(loader: ClassLoader?, api: String, framework: String) {
         try {
             Hooks.oneIn(loader, "com.umutk.blackout.Status", "isActive", object : Hook() {
                 override fun beforeHookedMethod(param: HookParam) { param.result = true }
             })
             Hooks.oneIn(loader, "com.umutk.blackout.Status", "api", object : Hook() {
                 override fun beforeHookedMethod(param: HookParam) { param.result = api }
+            })
+            Hooks.oneIn(loader, "com.umutk.blackout.Status", "framework", object : Hook() {
+                override fun beforeHookedMethod(param: HookParam) { param.result = framework }
             })
         } catch (_: Throwable) { }
     }
@@ -92,7 +98,12 @@ object ModuleCore {
 /** Legacy LSPosed entry (xposed_init). Reads the settings with XSharedPreferences. */
 class XposedInit : IXposedHookLoadPackage {
     override fun handleLoadPackage(p: XC_LoadPackage.LoadPackageParam) {
-        if (p.packageName == "com.umutk.blackout") { ModuleCore.statusActive(p.classLoader, "legacy"); return }
+        if (p.packageName == "com.umutk.blackout") {
+            // the legacy API has no framework name; it only gives its API number (LSPosed and Vector both answer it)
+            val n = try { XposedBridge::class.java.getMethod("getXposedVersion").invoke(null) } catch (_: Throwable) { null }
+            ModuleCore.statusActive(p.classLoader, "legacy", n?.let { "Xposed API $it" } ?: "")
+            return
+        }
         val sp = XSharedPreferences("com.umutk.blackout", "blackout")
         sp.reload()
         // the real XSharedPreferences implements SharedPreferences; the local compile-time stub does not, hence the cast
@@ -103,7 +114,13 @@ class XposedInit : IXposedHookLoadPackage {
 /** Modern libxposed entry (META-INF/xposed/java_init.list). Reads the settings from the remote preferences LSPosed keeps for BlackOut. */
 class ModernEntry : XposedModule() {
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
-        if (param.packageName == "com.umutk.blackout") { Hooks.modern = this; ModuleCore.statusActive(param.classLoader, "modern"); return }
+        if (param.packageName == "com.umutk.blackout") {
+            Hooks.modern = this
+            // the framework names itself (LSPosed, Vector, ...) with its version; shown on the module page
+            val fw = try { "${frameworkName} ${frameworkVersion}".trim() } catch (_: Throwable) { "" }
+            ModuleCore.statusActive(param.classLoader, "modern", fw)
+            return
+        }
         // no settings have reached this process: step aside, so the legacy entry (which has always worked here) does the job as before
         val remote = getRemotePreferences("blackout")
         if (remote.all.isEmpty()) return

@@ -66,7 +66,7 @@ fun SetupFlow(st: SetupState, mode: Privilege.Mode, prefs: SharedPreferences, on
     fun openLsposed() {
         val i = ctx.packageManager.getLaunchIntentForPackage("org.lsposed.manager")
         if (i != null) ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        else Toast.makeText(ctx, "LSPosed is not installed. Root in step 3 works instead.", Toast.LENGTH_LONG).show()
+        else Toast.makeText(ctx, "Welcome to BlackOut: it turns the dark grey surfaces of the apps you choose pure black (AMOLED). Install LSPosed or Vector, switch BlackOut on in its scope, or use root in step 3.", Toast.LENGTH_LONG).show()
     }
     fun turnOnWatcher() {
         when {
@@ -137,7 +137,9 @@ fun SetupFlow(st: SetupState, mode: Privilege.Mode, prefs: SharedPreferences, on
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             if (cur > 0) TextButton({ cur-- }, Modifier.height(48.dp)) { Text("Back", fontSize = 16.sp) } else Spacer(Modifier.height(48.dp))
+            // every step can be skipped now; the Finish step still needs the required steps to be done
             if (optional) TextButton({ cur++ }, Modifier.height(48.dp)) { Text("Skip (optional)", fontSize = 16.sp, color = dim) }
+            else if (!last) TextButton({ cur++ }, Modifier.height(48.dp)) { Text("Skip", fontSize = 16.sp, color = dim) }
         }
     }
 }

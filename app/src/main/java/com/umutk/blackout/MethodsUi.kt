@@ -174,10 +174,10 @@ fun ModulePage(mode: Privilege.Mode, sp: SharedPreferences) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(if (active) Color(0xFF4CAF50) else Color(0xFFFFB74D)))
                     Spacer(Modifier.width(10.dp))
-                    Text(if (active) "Module is active in LSPosed (${Status.api()} API)" else "Module not detected yet", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(if (active) "Module is active in ${Status.framework().ifEmpty { "an Xposed framework" }} (${Status.api()} API)" else "Module not detected yet", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     TextButton({ active = Status.isActive(); last = HookReport.newest(ctx) }) { Text("Refresh") }
                 }
-                Text("Loaded here: ${Status.api()} entry · LSPosed service: ${if (SettingsMirror.bound) "connected" else "NOT connected (settings do not reach other apps)"}", fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                Text("Loaded here: ${Status.api()} entry · LSPosed service: ${if (SettingsMirror.bound || Status.isActive()) "connected" else "not connected (modern hooks get no settings; legacy still works)"}", fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
                 Text(last?.let { "Last report from an app: ${(System.currentTimeMillis() - it.at) / 1000} s ago, ${it.api} entry" } ?: "No app has reported yet.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 2.dp))
                 Text("Dark greys of the ticked apps go pure black.", fontSize = 13.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
                 Text("LSPosed > BlackOut: switch it on, tick BlackOut and the apps, restart them.", fontSize = 13.sp, maxLines = 2, modifier = Modifier.padding(top = 4.dp))

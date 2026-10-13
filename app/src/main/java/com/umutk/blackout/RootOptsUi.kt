@@ -45,6 +45,63 @@ fun SupportLine(mode: Privilege.Mode, supported: Boolean?) {
     Text(text, fontSize = 13.sp, color = color, modifier = Modifier.padding(top = 4.dp))
 }
 
+/** Root: Android's "Reduce bright colors" (extra dim) with a strength slider, for a dim black screen. Android 11+. */
+@Composable
+fun DimBlackCard(mode: Privilege.Mode, sp: SharedPreferences) {
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf(false) }
+    var level by remember { mutableStateOf(sp.getInt("dim_level", 50).toFloat()) }
+    var supported by remember { mutableStateOf<Boolean?>(null) }
+    var msg by remember { mutableStateOf<String?>(null) }
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    val key = "reduce_bright_colors_activated"
+    LaunchedEffect(mode) {
+        if (mode != Privilege.Mode.None) {
+            val (sup, value) = withContext(Dispatchers.IO) {
+                RootOpts.answers("[ \"\$(getprop ro.build.version.sdk)\" -ge 30 ]") to Privilege.run("settings get secure $key").text.trim()
+            }
+            supported = sup; on = value == "1"
+        }
+    }
+    fun push(v: Boolean, l: Int) {
+        scope.launch {
+            val o = withContext(Dispatchers.IO) {
+                if (v) RootOpts.remember(sp, "dim") { Privilege.run("settings get secure $key").text.trim() }
+                Privilege.run("settings put secure reduce_bright_colors_level $l; settings put secure $key ${if (v) 1 else 0}; settings get secure $key")
+            }
+            msg = if (o.text.trim().lines().last().trim() == (if (v) "1" else "0")) null else "The phone did not take it: ${o.text.take(120)}"
+        }
+    }
+    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (on) "Dim black is ON (${level.toInt()}%)" else "Dim black is off", fontWeight = FontWeight.Bold)
+                    Text("Same as Settings > Accessibility > Reduce bright colors. Dims the whole screen below black.", fontSize = 13.sp, color = dim)
+                }
+                Switch(on, { v -> on = v; push(v, level.toInt()) }, enabled = mode != Privilege.Mode.None && supported == true)
+            }
+            SupportLine(mode, supported)
+            Text("Strength", fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+            Slider(level, { level = it }, valueRange = 0f..100f,
+                onValueChangeFinished = { sp.edit().putInt("dim_level", level.toInt()).apply(); if (on) push(true, level.toInt()) },
+                enabled = mode != Privilege.Mode.None && supported == true)
+            OutlinedButton({
+                scope.launch {
+                    val (orig, o) = withContext(Dispatchers.IO) {
+                        val orig = RootOpts.original(sp, "dim") ?: "0"
+                        RootOpts.forget(sp, "dim")
+                        orig to Privilege.run("settings put secure $key ${if (orig == "1") 1 else 0}; settings get secure $key")
+                    }
+                    on = orig == "1"
+                    msg = "Back to the setting from before BlackOut: ${o.text.trim().lines().last().trim()}"
+                }
+            }, Modifier.padding(top = 8.dp), enabled = mode != Privilege.Mode.None) { Text("Reset to original") }
+            msg?.let { Text(it, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
+        }
+    }
+}
+
 /** Android's own whole-screen color inversion (Settings > Accessibility > Color inversion), switched through root. Off unless you switch it on. */
 @Composable
 fun InvertScreenCard(mode: Privilege.Mode, sp: SharedPreferences) {
@@ -69,7 +126,7 @@ fun InvertScreenCard(mode: Privilege.Mode, sp: SharedPreferences) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(if (on) "Invert the whole screen is ON" else "Invert the whole screen is off", fontWeight = FontWeight.Bold)
-                    Text("Same as Settings > Accessibility > Color inversion. Photos turn negative too.", fontSize = 13.sp, color = dim)
+                    Text("Same as Settings > Accessibility > Color inversion. Photos and the status bar turn negative too; Android cannot exclude them.", fontSize = 13.sp, color = dim)
                 }
                 Switch(on, { v ->
                     on = v; sp.edit().putBoolean("inv_on", v).apply()

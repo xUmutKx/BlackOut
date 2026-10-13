@@ -96,7 +96,8 @@ private fun HookStatusBlock(r: HookReport?, wanted: Boolean) {
         if (r.keys == 0) Text("It cannot read BlackOut's settings, so nothing you switch on here reaches it.", fontSize = 13.sp, color = bad)
         else if (wanted && !r.fd && !r.smart) Text("This app was started before you switched it on. Press Restart app.", fontSize = 13.sp, color = warn)
         Text("Android ${r.sdk} · ${r.api} API · settings read: ${if (r.keys < 0) "unknown" else r.keys.toString()}", fontSize = 13.sp, color = dim)
-        if (r.fd) Text("Force dark switched on in ${r.forced} window${if (r.forced == 1) "" else "s"}" + if (r.forced == 0) " (none yet: open a screen of the app)" else "", fontSize = 13.sp, color = if (r.forced > 0) ok else warn)
+        // shown only once a window really got it: a zero count just means no window was created yet, not a fault
+        if (r.fd && r.forced > 0) Text("Force dark switched on in ${r.forced} window${if (r.forced == 1) "" else "s"}", fontSize = 13.sp, color = ok)
         if (r.smart || r.pages) Text("Repainted ${r.fills} light areas, turned ${r.texts} dark texts light" + if (r.fills == 0 && r.texts == 0) " (nothing yet: the app may draw with its own engine)" else "", fontSize = 13.sp, color = if (r.fills + r.texts > 0) ok else warn)
         Text("Dark greys turned black: ${r.greys}", fontSize = 13.sp, color = dim)
     }

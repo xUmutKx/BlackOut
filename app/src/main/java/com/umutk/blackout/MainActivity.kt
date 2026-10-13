@@ -97,8 +97,18 @@ private fun Root() {
         detected = true
         apps =withContext(Dispatchers.IO) {
             val pm = ctx.packageManager
-            pm.getInstalledApplications(0)
-                .map { AppRow(it.packageName, pm.getApplicationLabel(it).toString(), it.sourceDir, pm.getLaunchIntentForPackage(it.packageName) != null) }.sortedBy { it.label.lowercase() }
+            val main = pm.getInstalledApplications(0)
+                .map { AppRow(it.packageName, pm.getApplicationLabel(it).toString(), it.sourceDir, pm.getLaunchIntentForPackage(it.packageName) != null) }
+            // Secure Folder and other profiles: PackageManager sees only this profile, so with root / Shizuku their packages are read from the shell
+            val seen = main.map { it.pkg }.toSet()
+            val others = runCatching {
+                Privilege.run("pm list users").text.lines()
+                    .mapNotNull { Regex("UserInfo\\{(\\d+):").find(it)?.groupValues?.get(1)?.toIntOrNull() }.filter { it != 0 }
+                    .flatMap { u -> Privilege.run("pm list packages --user $u").text.lines()
+                        .map { it.removePrefix("package:").trim() }.filter { it.isNotEmpty() && it !in seen }
+                        .map { AppRow(it, "$it (profile $u)", "", false) } }
+            }.getOrDefault(emptyList())
+            (main + others).sortedBy { it.label.lowercase() }
         }
     }
     var page by rememberSaveable { mutableStateOf("home") }   // home, global, apps, settings
@@ -166,7 +176,7 @@ private fun Root() {
             }
             "sysfd" -> {
                 TopBar("Force dark") { page = "home" }
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { SystemForceDarkCard(mode, prefs); SystemDarkThemeCard(mode, prefs); InvertScreenCard(mode, prefs) }
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { SystemForceDarkCard(mode, prefs); SystemDarkThemeCard(mode, prefs); DimBlackCard(mode, prefs); InvertScreenCard(mode, prefs) }
             }
             "global" -> {
                 TopBar("All Material You apps") { page = "home" }
